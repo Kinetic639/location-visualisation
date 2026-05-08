@@ -1,0 +1,6 @@
+{
+  "name": "AMBRA Locations",
+  "description": "A high-fidelity spatial planning tool for warehouse and storage management, separating logical inventory locations from visual representations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
