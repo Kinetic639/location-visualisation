@@ -15,67 +15,123 @@ import {
   DoorOpen,
   Square,
   Warehouse,
-  Wind
+  Wind,
+  Lock,
+  Unlock,
+  Link as LinkIcon
 } from 'lucide-react';
 import React, { useState } from 'react';
-import { LogicalLocation, VisualNode } from '../../types';
+import { LogicalLocation, VisualNode, ViewMode } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { findNodeById, replaceNodeById } from '../../lib/structureUtils';
+import { PRESET_CATEGORIES } from '../../constants/presets';
 
 interface SidebarLeftProps {
   locations: LogicalLocation[];
   visuals: VisualNode[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  selectedIds: string[];
+  onSelect: (id: string | null) => void;
+  onSelectMultiple: (ids: string[]) => void;
   onAddPreset: (preset: any) => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  selectedFrontCellIds: string[];
+  onSelectFrontCell: (ids: string[] | ((prev: string[]) => string[])) => void;
+  onUpdateNode?: (id: string, updates: Partial<VisualNode>) => void;
 }
 
-type Tab = 'visuals' | 'presets' | 'locations' | 'layers';
+type Tab = 'visuals' | 'presets' | 'locations' | 'layers' | 'structure';
 
-const PRESET_CATEGORIES = [
-  {
-    name: 'Storage',
-    items: [
-      { type: 'shelf', label: 'Heavy Duty Rack', icon: Box, w: 2500, d: 1000, h: 4000, color: 'rgba(56, 189, 248, 0.2)', supportsFrontView: true, supportsInteriorView: true },
-      { type: 'shelf', label: 'Narrow Aisle Rack', icon: Box, w: 2500, d: 800, h: 6000, color: 'rgba(56, 189, 248, 0.2)', supportsFrontView: true, supportsInteriorView: true },
-      { type: 'cabinet', label: 'Meta Cabinet', icon: Package, w: 1000, d: 500, h: 2000, color: 'rgba(129, 140, 248, 0.2)', supportsFrontView: true, supportsInteriorView: true },
-      { type: 'shelf', label: 'Gravity Flow Rack', icon: Box, w: 1500, d: 1500, h: 2000, color: 'rgba(34, 197, 94, 0.2)', supportsFrontView: true, supportsInteriorView: true },
-    ]
-  },
-  {
-    name: 'Operational',
-    items: [
-      { type: 'zone', label: 'Packing Station', icon: Square, w: 2000, d: 1500, h: 0, color: 'rgba(234, 179, 8, 0.1)', supportsFrontView: false, supportsInteriorView: false },
-      { type: 'zone', label: 'Quality Control', icon: Square, w: 3000, d: 2000, h: 0, color: 'rgba(168, 85, 247, 0.1)', supportsFrontView: false, supportsInteriorView: false },
-      { type: 'zone', label: 'Staging Area', icon: Square, w: 5000, d: 5000, h: 0, color: 'rgba(14, 165, 233, 0.05)', supportsFrontView: false, supportsInteriorView: false },
-    ]
-  },
-  {
-    name: 'Infrastructure',
-    items: [
-      { type: 'zone', label: 'Door / Access', icon: DoorOpen, w: 1200, d: 200, h: 2100, color: 'rgba(244, 63, 94, 0.4)', supportsFrontView: false, supportsInteriorView: false },
-      { type: 'zone', label: 'Window', icon: Wind, w: 1500, d: 100, h: 4000, color: 'rgba(56, 189, 248, 0.3)', supportsFrontView: false, supportsInteriorView: false },
-      { type: 'zone', label: 'Support Pillar', icon: Square, w: 600, d: 600, h: 10000, color: 'rgba(71, 85, 105, 0.8)', supportsFrontView: false, supportsInteriorView: false },
-    ]
-  }
-];
-
-export default function EditorSidebarLeft({ locations, visuals, selectedId, onSelect, onAddPreset }: SidebarLeftProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('visuals');
+export default function EditorSidebarLeft({ 
+  locations, 
+  visuals, 
+  selectedId, 
+  selectedIds,
+  onSelect, 
+  onSelectMultiple,
+  onAddPreset,
+  viewMode,
+  setViewMode,
+  selectedFrontCellIds,
+  onSelectFrontCell,
+  onUpdateNode
+}: SidebarLeftProps) {
+  const [activeTab, setActiveTab] = useState<Tab>(viewMode === ViewMode.FRONT ? 'structure' : 'visuals');
   const [expandedIds, setExpandedIds] = useState<string[]>(['l1']);
+  const [expandedStructureIds, setExpandedStructureIds] = useState<string[]>([]);
+
+  const isFrontMode = viewMode === ViewMode.FRONT;
+  const selectedNode = visuals.find(v => v.id === (selectedId || selectedIds[0]));
+
+  const toggleSelection = (id: string, isShift: boolean) => {
+    if (isShift) {
+      if (selectedIds.includes(id)) {
+        onSelectMultiple(selectedIds.filter(i => i !== id));
+      } else {
+        onSelectMultiple([...selectedIds, id]);
+      }
+    } else {
+      onSelect(id);
+    }
+  };
+
+  const toggleLock = (id: string) => {
+    if (!selectedNode?.structure || !onUpdateNode) return;
+    const targetNode = findNodeById(selectedNode.structure, id);
+    if (targetNode) {
+      const newStructure = replaceNodeById(selectedNode.structure, id, { ...targetNode, locked: !targetNode.locked });
+      onUpdateNode(selectedNode.id, { structure: newStructure });
+    }
+  };
+
+  // Auto-expand parents of selected cell
+  React.useEffect(() => {
+    if (selectedFrontCellIds.length > 0 && selectedNode?.structure) {
+      const lastId = selectedFrontCellIds[selectedFrontCellIds.length - 1];
+      const getPath = (root: any, id: string, path: string[] = []): string[] | null => {
+        if (root.id === id) return path;
+        if (root.children) {
+          for (const child of root.children) {
+            const result = getPath(child, id, [...path, root.id]);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+      const path = getPath(selectedNode.structure, lastId);
+      if (path) {
+        setExpandedStructureIds(prev => Array.from(new Set([...prev, ...path])));
+      }
+    }
+  }, [selectedFrontCellIds, selectedNode?.structure]);
+
+  // Sync tab when viewMode changes
+  React.useEffect(() => {
+    if (viewMode === ViewMode.FRONT) {
+      setActiveTab('structure');
+    } else {
+      setActiveTab('visuals');
+    }
+  }, [viewMode]);
 
   const rootVisual = visuals.find(v => v.parentId === null && v.type === 'zone');
   const otherVisuals = visuals.filter(v => v !== rootVisual);
 
   return (
-    <div className="w-64 bg-slate-900 border-r border-slate-700 flex flex-col z-30">
-      <div className="flex bg-slate-950/50 border-b border-slate-700">
-        <TabBtn icon={<Shapes />} active={activeTab === 'visuals'} onClick={() => setActiveTab('visuals')} title="Visuals List" />
+    <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-30">
+      <div className="flex bg-slate-950/50 border-b border-slate-800">
+        {isFrontMode ? (
+          <TabBtn icon={<LayoutIcon />} active={activeTab === 'structure'} onClick={() => setActiveTab('structure')} title="Object Structure" />
+        ) : (
+          <TabBtn icon={<Shapes />} active={activeTab === 'visuals'} onClick={() => setActiveTab('visuals')} title="Visuals List" />
+        )}
         <TabBtn icon={<Package />} active={activeTab === 'presets'} onClick={() => setActiveTab('presets')} title="Object Presets" />
         <TabBtn icon={<Database />} active={activeTab === 'locations'} onClick={() => setActiveTab('locations')} title="Connected Locations" />
         <TabBtn icon={<Layers />} active={activeTab === 'layers'} onClick={() => setActiveTab('layers')} title="Layers" />
       </div>
 
-      <div className="p-3 border-b border-slate-700 bg-slate-900">
+      <div className="p-3 border-b border-slate-800 bg-slate-900">
          <div className="relative group">
             <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-500 transition-colors group-focus-within:text-sky-500" />
             <input 
@@ -87,15 +143,57 @@ export default function EditorSidebarLeft({ locations, visuals, selectedId, onSe
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 p-2">
+        {activeTab === 'structure' && isFrontMode && (
+          <div className="space-y-4">
+             {selectedNode?.structure ? (
+               <div>
+                  <div 
+                    onClick={() => setViewMode(ViewMode.TOP_DOWN)}
+                    className="flex items-center justify-between px-2 py-1.5 mb-2 rounded-lg cursor-pointer hover:bg-sky-500/5 transition-all text-sky-400 group border border-transparent hover:border-sky-500/20"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest italic">{selectedNode.label}</p>
+                    <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity rotate-180" />
+                  </div>
+                  <StructureTreeItem 
+                    node={selectedNode.structure} 
+                    selectedCellIds={selectedFrontCellIds} 
+                    onSelectCell={(id: string, shift: boolean) => {
+                      if (shift) {
+                        onSelectFrontCell(prev => 
+                          prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+                        );
+                      } else {
+                        onSelectFrontCell([id]);
+                      }
+                    }}
+                    onSelectRecursive={(ids: string[]) => {
+                      onSelectFrontCell(prev => Array.from(new Set([...prev, ...ids])));
+                    }}
+                    depth={0} 
+                    expandedIds={expandedStructureIds}
+                    onToggleExpand={(id: string) => setExpandedStructureIds(prev => 
+                      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+                    )}
+                    onToggleLock={toggleLock}
+                  />
+               </div>
+             ) : (
+               <div className="p-8 text-center text-slate-700 text-[10px] uppercase font-bold italic tracking-widest opacity-40">
+                 Front view not initialized
+               </div>
+             )}
+          </div>
+        )}
+
         {activeTab === 'visuals' && (
           <div className="space-y-4">
              {rootVisual && (
                <div>
                   <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest px-2 mb-2 italic">Physical Footprint</p>
                   <div 
-                    onClick={() => onSelect(rootVisual.id)}
+                    onClick={(e) => toggleSelection(rootVisual.id, e.shiftKey)}
                     className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      selectedId === rootVisual.id ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-slate-800/40 border-slate-700 hover:border-slate-600 text-slate-400'
+                      selectedIds.includes(rootVisual.id) ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-slate-800/40 border-slate-700 hover:border-slate-600 text-slate-400'
                     }`}
                   >
                      <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center border border-slate-700 shrink-0">
@@ -117,8 +215,8 @@ export default function EditorSidebarLeft({ locations, visuals, selectedId, onSe
                   <VisualListItem 
                     key={visual.id} 
                     visual={visual} 
-                    selected={selectedId === visual.id} 
-                    onSelect={() => onSelect(visual.id)} 
+                    selected={selectedIds.includes(visual.id)} 
+                    onSelect={(shift: boolean) => toggleSelection(visual.id, shift)} 
                   />
                 ))}
                 {otherVisuals.length === 0 && (
@@ -177,6 +275,7 @@ export default function EditorSidebarLeft({ locations, visuals, selectedId, onSe
                  setExpandedIds={setExpandedIds}
                  selectedId={selectedId}
                  onSelect={onSelect}
+                 toggleSelection={toggleSelection}
                  depth={0}
                />
              ))}
@@ -191,7 +290,7 @@ export default function EditorSidebarLeft({ locations, visuals, selectedId, onSe
         )}
       </div>
 
-      <div className="p-3 border-t border-slate-700 bg-slate-900 flex items-center justify-between">
+      <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between">
          <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-slate-600" />
             <span className="text-[9px] font-black text-slate-600 uppercase tracking-[0.2em] italic">Active filter: none</span>
@@ -221,10 +320,10 @@ function TabBtn({ icon, active, onClick, badge, title }: { icon: React.ReactElem
   );
 }
 
-function LocationTreeItem({ location, allLocations, visuals, expandedIds, setExpandedIds, selectedId, onSelect, depth }: any) {
+function LocationTreeItem({ location, allLocations, visuals, expandedIds, setExpandedIds, selectedId, selectedIds, onSelect, toggleSelection, depth }: any) {
   const children = allLocations.filter((l: any) => l.parentId === location.id);
   const isExpanded = expandedIds.includes(location.id);
-  const isSelected = selectedId === location.id;
+  const isSelected = selectedIds.includes(location.id) || selectedId === location.id;
   const isMapped = visuals.some((v: any) => v.locationId === location.id);
   const hasChildren = children.length > 0;
 
@@ -243,7 +342,7 @@ function LocationTreeItem({ location, allLocations, visuals, expandedIds, setExp
           ${isSelected ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20' : 'hover:bg-slate-800 text-slate-500 hover:text-slate-200'}
         `}
         style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        onClick={() => onSelect(location.id)}
+        onClick={(e) => toggleSelection(location.id, e.shiftKey)}
       >
         <div onClick={toggle} className={`hover:text-white transition-colors ${!hasChildren && 'opacity-0 pointer-events-none'}`}>
            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
@@ -271,6 +370,7 @@ function LocationTreeItem({ location, allLocations, visuals, expandedIds, setExp
                  setExpandedIds={setExpandedIds}
                  selectedId={selectedId}
                  onSelect={onSelect}
+                 toggleSelection={toggleSelection}
                  depth={depth + 1}
                />
             ))}
@@ -286,22 +386,137 @@ function VisualListItem({ visual, selected, onSelect }: any) {
     <div 
       className={`
         flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border mb-1
-        ${selected ? 'bg-sky-500/10 text-sky-400 border-sky-500/20' : 'hover:bg-slate-800 text-slate-500 border-transparent hover:text-slate-200'}
+        ${selected ? 'bg-sky-500/10 text-sky-400 border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.05)]' : 'hover:bg-slate-800 text-slate-500 border-transparent hover:text-slate-200'}
       `}
-      onClick={onSelect}
+      onClick={(e) => onSelect(e.shiftKey)}
     >
       <div className="flex items-center gap-2">
          <div className={`w-4 h-4 border rounded flex items-center justify-center p-0.5 ${selected ? 'border-sky-500' : 'border-slate-700'}`}>
             <div className={`w-full h-full rounded-sm ${selected ? 'bg-sky-500' : 'bg-slate-700'}`}></div>
          </div>
          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase tracking-tight">{visual.label}</span>
+            <span className={`text-[10px] font-black uppercase tracking-tight ${selected ? 'text-white' : ''}`}>{visual.label}</span>
             <span className="text-[8px] text-slate-600 font-mono italic">{visual.locationId ? 'Mapped-ID' : 'Virtual'}</span>
          </div>
       </div>
       <button className={`p-1 transition-colors ${selected ? 'text-sky-400' : 'hover:text-white'}`}>
-        <Eye className="w-3 h-3" />
+        <Eye className="w-3.5 h-3.5" />
       </button>
+    </div>
+  );
+}
+
+function StructureTreeItem({ node, selectedCellIds, onSelectCell, onSelectRecursive, depth, expandedIds, onToggleExpand, onToggleLock }: any) {
+  const isSelected = selectedCellIds?.includes(node.id);
+  const hasChildren = node.children && node.children.length > 0;
+  const isExpanded = expandedIds?.includes(node.id);
+
+  const getAllChildrenIds = (n: any): string[] => {
+    let ids = n.type === 'cell' ? [n.id] : [];
+    if (n.children) {
+      n.children.forEach((c: any) => {
+        ids = [...ids, ...getAllChildrenIds(c)];
+      });
+    }
+    return ids;
+  };
+  
+  return (
+    <div className="select-none">
+      <div 
+        onClick={(e) => onSelectCell(node.id, e.shiftKey)}
+        className={`
+          flex items-center gap-2 p-1 py-1.5 rounded-md cursor-pointer group transition-all mb-0.5
+          ${isSelected 
+              ? (node.locked ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-sky-500/10 text-sky-400 border border-sky-500/20') 
+              : 'hover:bg-slate-800 text-slate-500 hover:text-slate-200'}
+        `}
+        style={{ paddingLeft: `${depth * 12 + 8}px` }}
+      >
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand(node.id);
+          }}
+          className={`hover:text-white transition-colors p-0.5 rounded hover:bg-slate-700 ${!hasChildren && 'opacity-0 pointer-events-none'}`}
+        >
+           {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+        </div>
+        <div className={`flex items-center gap-2 flex-1 min-w-0 ${node.locked ? 'opacity-50' : ''}`}>
+           {node.type === 'container' ? <LayoutIcon className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+           <span className="text-[10px] font-bold flex-1 truncate uppercase tracking-tight">{node.displayLabel || node.label || node.id}</span>
+        </div>
+        
+        {node.locationId && (
+          <div title="Mapped to Location">
+            <LinkIcon className="w-3 h-3 text-emerald-500 shrink-0" />
+          </div>
+        )}
+
+        {node.locked && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLock(node.id);
+            }}
+            className="p-1 hover:bg-slate-700/50 rounded transition-all shrink-0 ml-1 text-slate-500 hover:text-white"
+            title="Unlock section"
+          >
+            <Lock className="w-3 h-3" />
+          </button>
+        )}
+        
+        {!node.locked && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleLock(node.id);
+            }}
+            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 text-slate-500 hover:text-white rounded transition-all shrink-0 ml-1"
+            title="Lock section"
+          >
+            <Unlock className="w-3 h-3" />
+          </button>
+        )}
+
+        {node.type === 'container' && !node.locked && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectRecursive(getAllChildrenIds(node));
+            }}
+            title="Select all children"
+            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-sky-500/20 text-sky-500 rounded transition-all shrink-0"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isExpanded && hasChildren && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            {node.children.map((child: any) => (
+              <StructureTreeItem 
+                key={child.id} 
+                node={child} 
+                selectedCellIds={selectedCellIds} 
+                onSelectCell={onSelectCell} 
+                onSelectRecursive={onSelectRecursive}
+                depth={depth + 1} 
+                expandedIds={expandedIds}
+                onToggleExpand={onToggleExpand}
+                onToggleLock={onToggleLock}
+              />
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,19 +1,32 @@
 import React from 'react';
 import { 
   ArrowLeft, 
+  MousePointer2, 
+  Hand, 
+  Plus, 
+  Ruler, 
+  Split, 
+  Box, 
   Grid, 
   ZoomIn, 
   ZoomOut, 
   Save, 
   ChevronRight,
+  Eye,
+  Settings,
+  Search,
   Maximize,
   Map
 } from 'lucide-react';
 import { ViewMode } from '../../types';
+import { EditorTool } from './EditorPage';
 
 interface ToolbarProps {
   layoutName: string;
   viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  selectedTool: EditorTool;
+  setSelectedTool: (tool: EditorTool) => void;
   zoomLevel: number;
   setZoomLevel: (zoom: number) => void;
   showGrid: boolean;
@@ -26,13 +39,16 @@ interface ToolbarProps {
   setShowRulers: (show: boolean) => void;
   selectedNodeId: string | null;
   onBack: () => void;
-  setViewMode: (mode: ViewMode) => void;
+  onAdd: () => void;
   onFitScreen: () => void;
 }
 
 export default function EditorToolbar({
   layoutName,
   viewMode,
+  setViewMode,
+  selectedTool,
+  setSelectedTool,
   zoomLevel,
   setZoomLevel,
   showGrid,
@@ -45,7 +61,7 @@ export default function EditorToolbar({
   setShowRulers,
   selectedNodeId,
   onBack,
-  setViewMode,
+  onAdd,
   onFitScreen
 }: ToolbarProps) {
   return (
@@ -81,20 +97,45 @@ export default function EditorToolbar({
              onClick={() => setViewMode(ViewMode.FRONT)}
              label="Front"
            />
+           <ViewModeBtn 
+             active={viewMode === ViewMode.INTERIOR} 
+             onClick={() => setViewMode(ViewMode.INTERIOR)}
+             label="Interior"
+           />
         </div>
+      </div>
+
+      <div className="flex items-center gap-1 bg-slate-950/40 p-1.5 rounded-xl border border-slate-800 shadow-inner">
+        <ToolBtn icon={<MousePointer2 className="w-4 h-4" />} active={selectedTool === 'select'} onClick={() => setSelectedTool('select')} title="Selection Tool" />
+        <ToolBtn icon={<Hand className="w-4 h-4" />} active={selectedTool === 'pan'} onClick={() => setSelectedTool('pan')} title="Pan Tool" />
+        <div className="w-px h-4 bg-slate-800 mx-1"></div>
+        <ToolBtn 
+          icon={<Plus className="w-4 h-4" />} 
+          active={selectedTool === 'add'} 
+          onClick={() => {
+            setSelectedTool('add');
+            onAdd();
+          }} 
+          color="sky"
+          title="Add Custom Element"
+        />
+        <ToolBtn icon={<Ruler className="w-4 h-4" />} active={selectedTool === 'measure'} onClick={() => setSelectedTool('measure')} title="Measure Tool" />
+        <ToolBtn icon={<Split className="w-4 h-4" />} active={selectedTool === 'split'} onClick={() => setSelectedTool('split')} title="Split / Divide" />
       </div>
 
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-xl p-1">
            <div className="px-2 py-1 text-[9px] font-black text-slate-500 uppercase border-r border-slate-700 mr-1 flex items-center gap-2">
               <span className="text-sky-500">
-                {viewMode === ViewMode.TOP_DOWN ? 'Top' : 'Front'}
+                {viewMode === ViewMode.TOP_DOWN ? 'Top' : viewMode === ViewMode.FRONT ? 'Front' : 'Interior'}
               </span>
               <span className="text-[7px] text-slate-600 opacity-60">·</span>
               <span className="lowercase font-bold tracking-normal italic opacity-80">
                 {viewMode === ViewMode.TOP_DOWN 
                   ? 'Floor plan' 
-                  : 'Width × Height'}
+                  : viewMode === ViewMode.FRONT 
+                    ? 'Width × Height' 
+                    : 'Compartments and storage structure'}
               </span>
            </div>
            <button 
@@ -146,12 +187,12 @@ export default function EditorToolbar({
                onChange={(e) => setGridSize(Number(e.target.value))}
                className="bg-transparent text-[9px] font-bold text-slate-400 outline-none cursor-pointer"
              >
-                <option value={1}>1cm</option>
-                <option value={5}>5cm</option>
-                <option value={10}>10cm</option>
-                <option value={20}>20cm</option>
-                <option value={50}>50cm</option>
-                <option value={100}>1m</option>
+                <option value={10}>1cm</option>
+                <option value={50}>5cm</option>
+                <option value={100}>10cm</option>
+                <option value={200}>20cm</option>
+                <option value={500}>50cm</option>
+                <option value={1000}>1m</option>
              </select>
           </div>
         </div>
@@ -183,10 +224,28 @@ function ViewModeBtn({ active, onClick, label }: { active: boolean, onClick: () 
       onClick={onClick}
       className={`
         px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all
-        ${active ? 'bg-slate-800 text-white shadow-lg border border-slate-700' : 'text-slate-500 hover:text-slate-300'}
+        ${active ? 'bg-slate-800 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}
       `}
     >
       {label}
+    </button>
+  );
+}
+
+function ToolBtn({ icon, active, onClick, color = 'slate', title }: { icon: React.ReactNode, active: boolean, onClick: () => void, color?: 'sky' | 'slate', title?: string }) {
+  return (
+    <button 
+      onClick={onClick}
+      title={title}
+      className={`
+        p-1.5 rounded-lg transition-all relative
+        ${active 
+          ? color === 'sky' ? 'bg-sky-500 text-slate-900 shadow-lg shadow-sky-500/40' : 'bg-slate-700 text-white shadow-lg' 
+          : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}
+      `}
+    >
+      {icon}
+      {active && <span className={`absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${color === 'sky' ? 'bg-slate-900' : 'bg-white'}`}></span>}
     </button>
   );
 }

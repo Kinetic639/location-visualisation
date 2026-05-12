@@ -34,7 +34,8 @@ export enum MappingStatus {
 
 export enum ViewMode {
   TOP_DOWN = 'top-down',
-  FRONT = 'front'
+  FRONT = 'front',
+  INTERIOR = 'interior'
 }
 
 export interface Dimensions {
@@ -112,8 +113,6 @@ export interface StructureNode {
   label?: string; // Full structural name
   displayLabel?: string; // Short code (R1, K05, etc)
   color?: string;
-  skin?: string;
-  locked?: boolean;
   dividers?: (LayoutSplitDivider | null)[]; // N-1 dividers between N children
   frame?: {
     top?: LayoutSplitDivider;
@@ -122,9 +121,6 @@ export interface StructureNode {
     right?: LayoutSplitDivider;
   };
 }
-
-export type ZonePattern = 'solid' | 'stripes-thin' | 'stripes-wide' | 'dots' | 'grid' | 'diagonal-thin' | 'diagonal-wide';
-export type ZoneType = 'no_access' | 'elevator' | 'stairs' | 'operational' | 'storage' | 'infrastructure';
 
 export interface VisualNodeStyle {
   cornerRadiusTopLeft?: number;
@@ -152,14 +148,10 @@ export interface VisualNode {
   parentId: string | null; // For nested visuals like bins in a cabinet
   supportsFrontView?: boolean;
   frontSetupDone?: boolean;
+  supportsInteriorView?: boolean;
   frontSide?: 'top' | 'bottom' | 'left' | 'right';
   structure?: StructureNode;
   style?: VisualNodeStyle;
-  supportsInteriorView?: boolean;
-  zonePattern?: ZonePattern;
-  secondaryColor?: string;
-  blockPlacement?: boolean;
-  zoneType?: ZoneType;
 }
 
 export interface Layout {
