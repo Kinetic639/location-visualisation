@@ -8,20 +8,23 @@ import {
   Columns,
   Database,
   Minimize2,
-  Split
+  Split,
+  Copy
 } from 'lucide-react';
-import { ViewMode, VisualNode, LogicalLocation } from '../../types';
+import { ViewType, VisualNode, LogicalLocation, SplitTreeEntry } from '../../types';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from 'motion/react';
 import { findNodeById } from '../../lib/structureUtils';
 
 interface SelectionRibbonProps {
-  viewMode: ViewMode;
+  viewMode: ViewType;
   selectedNode: VisualNode | null;
   selectedNodes: VisualNode[];
+  splitTree: SplitTreeEntry | null;
   selectedLocation: LogicalLocation | null;
   selectedFrontCellIds: string[];
-  onSetViewMode: (mode: ViewMode) => void;
+  onSetViewMode: (mode: ViewType) => void;
+  onClone: () => void;
   onRemove: () => void;
   onLink: () => void;
   onUnlink: () => void;
@@ -34,9 +37,11 @@ export default function SelectionRibbon({
   viewMode,
   selectedNode,
   selectedNodes,
+  splitTree,
   selectedLocation,
   selectedFrontCellIds,
   onSetViewMode,
+  onClone,
   onRemove,
   onLink,
   onUnlink,
@@ -48,17 +53,17 @@ export default function SelectionRibbon({
   const flyoutRef = useRef<HTMLDivElement>(null);
 
   const hasSelection = !!selectedNode || !!selectedLocation || selectedNodes.length > 0;
-  const isFrontMode = viewMode === ViewMode.FRONT;
+  const isFrontMode = viewMode === ViewType.FRONT;
 
   const hasContainerSelected = selectedFrontCellIds.some(id => {
-    if (!selectedNode?.structure) return false;
-    const node = findNodeById(selectedNode.structure, id);
+    if (!splitTree?.root) return false;
+    const node = findNodeById(splitTree.root, id);
     return node?.type === 'container';
   });
 
   const hasLockedSelected = selectedFrontCellIds.some(id => {
-    if (!selectedNode?.structure) return false;
-    const node = findNodeById(selectedNode.structure, id);
+    if (!splitTree?.root) return false;
+    const node = findNodeById(splitTree.root, id);
     return node?.locked;
   });
 
@@ -217,7 +222,15 @@ export default function SelectionRibbon({
             </div>
 
             {/* Danger Zone */}
-            <div className="mt-auto pt-2 border-t border-slate-800">
+            <div className="mt-auto pt-2 border-t border-slate-800 flex flex-col gap-2">
+              {!isFrontMode && (
+                <RibbonButton 
+                  icon={Copy} 
+                  onClick={onClone} 
+                  label="Clone Node" 
+                  color="sky"
+                />
+              )}
               <RibbonButton 
                 icon={Trash2} 
                 onClick={onRemove} 

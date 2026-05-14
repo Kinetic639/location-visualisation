@@ -1,4 +1,30 @@
-import { StructureNode, LayoutSplitDivider } from '../types';
+import { VisualNode, StructureNode, LayoutSplitDivider } from '../types';
+
+export const isLocationMapped = (visuals: VisualNode[], locationId: string, ignoreTarget?: { nodeId: string, structureNodeId?: string }): boolean => {
+  for (const visual of visuals) {
+    // Check top-level mapping
+    if (visual.locationId === locationId) {
+      if (ignoreTarget && ignoreTarget.nodeId === visual.id && !ignoreTarget.structureNodeId) {
+        // We are updating the node that already has this location, so it's fine
+      } else {
+        return true;
+      }
+    }
+    
+    // Check structural mapping
+    if (visual.structure) {
+      const found = findNodeByLocationId(visual.structure, locationId);
+      if (found) {
+        if (ignoreTarget && ignoreTarget.nodeId === visual.id && ignoreTarget.structureNodeId === found.id) {
+          // Fine
+        } else {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+};
 
 export const getAllDividers = (root: StructureNode, type?: 'horizontal' | 'vertical' | 'frame'): string[] => {
   let ids: string[] = [];
@@ -6,8 +32,8 @@ export const getAllDividers = (root: StructureNode, type?: 'horizontal' | 'verti
   if (root.dividers) {
     // If split is horizontal, the container renders vertically (rows), so dividers are horizontal
     // If split is vertical, the container renders horizontally (columns), so dividers are vertical
-    const isNodeHorizontal = root.split === 'horizontal'; 
-    const isNodeVertical = root.split === 'vertical';
+    const isNodeHorizontal = root.splitDirection === 'horizontal'; 
+    const isNodeVertical = root.splitDirection === 'vertical';
     
     root.dividers.forEach(d => {
        if (d) {
@@ -49,15 +75,27 @@ export const findNodeById = (root: StructureNode, id: string): StructureNode | n
   return null;
 };
 
+export const findNodeByLocationId = (root: StructureNode, locationId: string): StructureNode | null => {
+  if (root.locationId === locationId) return root;
+  if (root.children) {
+    for (const child of root.children) {
+      const found = findNodeByLocationId(child, locationId);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
 export const findDividerInStructure = (root: StructureNode, dividerId: string): { parent: StructureNode, divider: LayoutSplitDivider } | null => {
   if (root.dividers) {
     const divider = root.dividers.find(d => d?.id === dividerId);
     if (divider) return { parent: root, divider };
   }
   if (root.frame) {
+    const frame = root.frame as any;
     for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
-      if (root.frame[edge as keyof typeof root.frame]?.id === dividerId) {
-        return { parent: root, divider: root.frame[edge as keyof typeof root.frame]! };
+      if (frame[edge]?.id === dividerId) {
+        return { parent: root, divider: frame[edge] };
       }
     }
   }

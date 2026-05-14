@@ -9,11 +9,11 @@ import {
   Maximize,
   Map
 } from 'lucide-react';
-import { ViewMode } from '../../types';
+import { ViewType } from '../../types';
 
 interface ToolbarProps {
   layoutName: string;
-  viewMode: ViewMode;
+  viewMode: ViewType;
   zoomLevel: number;
   setZoomLevel: (zoom: number) => void;
   showGrid: boolean;
@@ -25,8 +25,9 @@ interface ToolbarProps {
   showRulers: boolean;
   setShowRulers: (show: boolean) => void;
   selectedNodeId: string | null;
+  isFrontDisabled: boolean;
   onBack: () => void;
-  setViewMode: (mode: ViewMode) => void;
+  setViewMode: (mode: ViewType) => void;
   onFitScreen: () => void;
 }
 
@@ -44,6 +45,7 @@ export default function EditorToolbar({
   showRulers,
   setShowRulers,
   selectedNodeId,
+  isFrontDisabled,
   onBack,
   setViewMode,
   onFitScreen
@@ -72,31 +74,26 @@ export default function EditorToolbar({
         {/* View Switcher */}
         <div className="flex bg-slate-950/50 p-1 rounded-xl border border-slate-800">
            <ViewModeBtn 
-             active={viewMode === ViewMode.TOP_DOWN} 
-             onClick={() => setViewMode(ViewMode.TOP_DOWN)}
+             active={viewMode === ViewType.TOP_DOWN} 
+             onClick={() => setViewMode(ViewType.TOP_DOWN)}
              label="Top"
            />
            <ViewModeBtn 
-             active={viewMode === ViewMode.FRONT} 
-             onClick={() => setViewMode(ViewMode.FRONT)}
+             active={viewMode === ViewType.FRONT} 
+             onClick={() => !isFrontDisabled && setViewMode(ViewType.FRONT)}
+             disabled={isFrontDisabled}
              label="Front"
+           />
+           <ViewModeBtn 
+             active={viewMode === ViewType.DATA} 
+             onClick={() => setViewMode(ViewType.DATA)}
+             label="Data"
            />
         </div>
       </div>
 
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-xl p-1">
-           <div className="px-2 py-1 text-[9px] font-black text-slate-500 uppercase border-r border-slate-700 mr-1 flex items-center gap-2">
-              <span className="text-sky-500">
-                {viewMode === ViewMode.TOP_DOWN ? 'Top' : 'Front'}
-              </span>
-              <span className="text-[7px] text-slate-600 opacity-60">·</span>
-              <span className="lowercase font-bold tracking-normal italic opacity-80">
-                {viewMode === ViewMode.TOP_DOWN 
-                  ? 'Floor plan' 
-                  : 'Width × Height'}
-              </span>
-           </div>
            <button 
              onClick={onFitScreen}
              className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
@@ -177,13 +174,15 @@ function ToolbarToggle({ icon, active, onClick, title }: { icon: React.ReactNode
   );
 }
 
-function ViewModeBtn({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
+function ViewModeBtn({ active, onClick, label, disabled }: { active: boolean, onClick: () => void, label: string, disabled?: boolean }) {
   return (
     <button 
       onClick={onClick}
+      disabled={disabled}
       className={`
         px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all
         ${active ? 'bg-slate-800 text-white shadow-lg border border-slate-700' : 'text-slate-500 hover:text-slate-300'}
+        ${disabled ? 'opacity-30 cursor-not-allowed grayscale' : ''}
       `}
     >
       {label}

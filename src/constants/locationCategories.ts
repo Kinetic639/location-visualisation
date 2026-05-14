@@ -7,7 +7,7 @@ export type LocationCategoryDefinition = {
   iconName: string;
   color?: string;
   defaults: {
-    storesInventory?: boolean;
+    canStoreInventory?: boolean;
     pickable?: boolean;
     receivable?: boolean;
     virtual?: boolean;
@@ -22,7 +22,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Primary organizational root location',
     iconName: 'Database',
     color: 'text-sky-400',
-    defaults: { storesInventory: false, pickable: false, receivable: false, virtual: false },
+    defaults: { canStoreInventory: false, pickable: false, receivable: false, virtual: false },
     suggestedChildren: [LocationType.ZONE, LocationType.STAGING_AREA, LocationType.BULK_STORAGE]
   },
   [LocationType.ZONE]: {
@@ -31,7 +31,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Broad warehouse area division',
     iconName: 'Layers',
     color: 'text-indigo-400',
-    defaults: { storesInventory: false, pickable: false, receivable: false, virtual: false },
+    defaults: { canStoreInventory: false, pickable: false, receivable: false, virtual: false },
     suggestedChildren: [LocationType.AISLE, LocationType.RACK, LocationType.SHELF]
   },
   [LocationType.AISLE]: {
@@ -40,7 +40,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Passageway between storage structures',
     iconName: 'ArrowRightLeft',
     color: 'text-slate-400',
-    defaults: { storesInventory: false, pickable: false, receivable: false, virtual: false },
+    defaults: { canStoreInventory: false, pickable: false, receivable: false, virtual: false },
     suggestedChildren: [LocationType.RACK, LocationType.SHELF]
   },
   [LocationType.RACK]: {
@@ -49,7 +49,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Physical vertical storage structure',
     iconName: 'Server',
     color: 'text-blue-400',
-    defaults: { storesInventory: false, pickable: false, receivable: false, virtual: false },
+    defaults: { canStoreInventory: false, pickable: false, receivable: false, virtual: false },
     suggestedChildren: [LocationType.SHELF, LocationType.BIN]
   },
   [LocationType.SHELF]: {
@@ -58,7 +58,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Horizontal storage level',
     iconName: 'Layout',
     color: 'text-emerald-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false },
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false },
     suggestedChildren: [LocationType.BIN, LocationType.DRAWER]
   },
   [LocationType.BIN]: {
@@ -67,7 +67,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Precise stock storage location',
     iconName: 'Box',
     color: 'text-amber-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.DRAWER]: {
     id: LocationType.DRAWER,
@@ -75,7 +75,15 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Small compartmentalized storage',
     iconName: 'Archive',
     color: 'text-orange-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
+  },
+  [LocationType.POSITION]: {
+    id: LocationType.POSITION,
+    label: 'Position',
+    description: 'Generic storage position',
+    iconName: 'Target',
+    color: 'text-sky-500',
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.PALLET_POSITION]: {
     id: LocationType.PALLET_POSITION,
@@ -83,7 +91,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Floor or rack space for a full pallet',
     iconName: 'MapPin',
     color: 'text-yellow-500',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.WORKBENCH]: {
     id: LocationType.WORKBENCH,
@@ -91,7 +99,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Station for assembly or processing',
     iconName: 'Construction',
     color: 'text-rose-400',
-    defaults: { storesInventory: true, pickable: false, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: false, receivable: true, virtual: false }
   },
   [LocationType.RECEIVING]: {
     id: LocationType.RECEIVING,
@@ -99,7 +107,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Inbound inventory staging area',
     iconName: 'Inbox',
     color: 'text-emerald-500',
-    defaults: { storesInventory: true, pickable: false, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: false, receivable: true, virtual: false }
   },
   [LocationType.SHIPPING]: {
     id: LocationType.SHIPPING,
@@ -107,7 +115,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Outbound dispatch staging area',
     iconName: 'Truck',
     color: 'text-blue-500',
-    defaults: { storesInventory: true, pickable: true, receivable: false, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: false, virtual: false }
   },
   [LocationType.RETURNS]: {
     id: LocationType.RETURNS,
@@ -115,7 +123,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Returned goods processing area',
     iconName: 'RotateCcw',
     color: 'text-purple-400',
-    defaults: { storesInventory: true, pickable: false, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: false, receivable: true, virtual: false }
   },
   [LocationType.QC]: {
     id: LocationType.QC,
@@ -123,7 +131,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Quality control / inspection location',
     iconName: 'CheckSquare',
     color: 'text-cyan-400',
-    defaults: { storesInventory: true, pickable: false, receivable: false, virtual: false }
+    defaults: { canStoreInventory: true, pickable: false, receivable: false, virtual: false }
   },
   [LocationType.QUARANTINE]: {
     id: LocationType.QUARANTINE,
@@ -131,7 +139,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Restricted area for non-conforming goods',
     iconName: 'ShieldAlert',
     color: 'text-red-500',
-    defaults: { storesInventory: true, pickable: false, receivable: false, virtual: false }
+    defaults: { canStoreInventory: true, pickable: false, receivable: false, virtual: false }
   },
   [LocationType.VIRTUAL]: {
     id: LocationType.VIRTUAL,
@@ -139,7 +147,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Non-physical operational location',
     iconName: 'Zap',
     color: 'text-fuchsia-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: true }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: true }
   },
   [LocationType.VEHICLE]: {
     id: LocationType.VEHICLE,
@@ -147,7 +155,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Mobile storage or transport unit',
     iconName: 'Car',
     color: 'text-slate-300',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.STAGING_AREA]: {
     id: LocationType.STAGING_AREA,
@@ -155,7 +163,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Temporary material placement',
     iconName: 'Flag',
     color: 'text-lime-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.OFFICE_STORAGE]: {
     id: LocationType.OFFICE_STORAGE,
@@ -163,7 +171,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Non-warehouse supply storage',
     iconName: 'Briefcase',
     color: 'text-stone-400',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.BULK_STORAGE]: {
     id: LocationType.BULK_STORAGE,
@@ -171,7 +179,7 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Large scale un-racked inventory',
     iconName: 'Archive',
     color: 'text-amber-600',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   },
   [LocationType.OTHER]: {
     id: LocationType.OTHER,
@@ -179,6 +187,6 @@ export const LOCATION_CATEGORIES: Record<LocationType, LocationCategoryDefinitio
     description: 'Miscellaneous location type',
     iconName: 'Box',
     color: 'text-slate-500',
-    defaults: { storesInventory: true, pickable: true, receivable: true, virtual: false }
+    defaults: { canStoreInventory: true, pickable: true, receivable: true, virtual: false }
   }
 };

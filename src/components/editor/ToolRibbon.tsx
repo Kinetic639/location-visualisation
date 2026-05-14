@@ -8,7 +8,6 @@ import {
   Square,
   Minus
 } from 'lucide-react';
-import { ViewMode } from '../../types';
 import { EditorTool } from './EditorPage';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from 'motion/react';

@@ -2,7 +2,10 @@ import {
   VisualNode, 
   LogicalLocation, 
   Layout,
-  ViewMode
+  ViewType,
+  SplitTreeEntry,
+  StructureNode,
+  LayoutSplitDivider
 } from '../../types';
 import { 
   Info, 
@@ -57,9 +60,9 @@ import {
   findNodeById, 
   findDividerInStructure, 
   getFullPath,
-  replaceNodeById 
+  replaceNodeById,
+  isLocationMapped
 } from '../../lib/structureUtils';
-import { StructureNode } from '../../types';
 import { SECTION_SKINS } from '../../constants/skins';
 
 interface SidebarRightProps {
@@ -69,7 +72,8 @@ interface SidebarRightProps {
   selectedLocation: LogicalLocation | null;
   locations: LogicalLocation[];
   visuals: VisualNode[];
-  viewMode: ViewMode;
+  splitTrees: SplitTreeEntry[];
+  viewMode: ViewType;
   selectedFrontCellIds: string[];
   selectedFrontDividerIds: string[];
   onSelectFrontCell: (ids: string[] | ((prev: string[]) => string[])) => void;
@@ -79,8 +83,9 @@ interface SidebarRightProps {
   onAssignLocation: (locationId: string) => void;
   onUpdateNode: (id: string, updates: Partial<VisualNode>) => void;
   onUpdateNodes: (updates: { id: string, updates: Partial<VisualNode> }[]) => void;
+  onUpdateSplitTree: (newTree: StructureNode) => void;
   onCreateLocationFromVisual: () => void;
-  onSetViewMode: (mode: ViewMode) => void;
+  onSetViewMode: (mode: ViewType) => void;
   onFrontSplit: (direction: 'horizontal' | 'vertical') => void;
   onBatchMap?: () => void;
   isLinking?: boolean;
@@ -94,6 +99,7 @@ export default function EditorSidebarRight({
   selectedLocation, 
   locations,
   visuals,
+  splitTrees,
   viewMode,
   selectedFrontCellIds,
   selectedFrontDividerIds,
@@ -104,6 +110,7 @@ export default function EditorSidebarRight({
   onAssignLocation,
   onUpdateNode,
   onUpdateNodes,
+  onUpdateSplitTree,
   onCreateLocationFromVisual,
   onSetViewMode,
   onFrontSplit,
@@ -114,44 +121,49 @@ export default function EditorSidebarRight({
   
   const [rotationStep, setRotationStep] = useState(90);
 
+  const splitTree = useMemo(() => {
+    if (!selectedNode?.front?.splitTreeId) return null;
+    return splitTrees.find(st => st.id === selectedNode.front?.splitTreeId) || null;
+  }, [selectedNode?.front?.splitTreeId, splitTrees]);
+
   // Front View Selection Helpers
   const frontCells = useMemo(() => {
-    if (selectedFrontCellIds.length === 0 || !selectedNode?.structure) return [];
-    return selectedFrontCellIds.map(id => findNodeById(selectedNode.structure!, id)).filter((n): n is StructureNode => !!n);
-  }, [selectedFrontCellIds, selectedNode?.structure]);
+    if (selectedFrontCellIds.length === 0 || !splitTree?.root) return [];
+    return selectedFrontCellIds.map(id => findNodeById(splitTree.root, id)).filter((n): n is StructureNode => !!n);
+  }, [selectedFrontCellIds, splitTree?.root]);
 
   const frontCell = frontCells.length === 1 ? frontCells[0] : null;
 
   const frontDivider = useMemo(() => {
-    if (selectedFrontDividerIds.length === 0 || !selectedNode?.structure) return null;
-    return findDividerInStructure(selectedNode.structure, selectedFrontDividerIds[0]);
-  }, [selectedFrontDividerIds, selectedNode?.structure]);
+    if (selectedFrontDividerIds.length === 0 || !splitTree?.root) return null;
+    return findDividerInStructure(splitTree.root, selectedFrontDividerIds[0]);
+  }, [selectedFrontDividerIds, splitTree?.root]);
 
   const frontPath = useMemo(() => {
-    if (selectedFrontCellIds.length === 0 || !selectedNode?.structure) return '';
-    return getFullPath(selectedNode.structure, selectedFrontCellIds[selectedFrontCellIds.length - 1]);
-  }, [selectedFrontCellIds, selectedNode?.structure]);
+    if (selectedFrontCellIds.length === 0 || !splitTree?.root) return '';
+    return getFullPath(splitTree.root, selectedFrontCellIds[selectedFrontCellIds.length - 1]);
+  }, [selectedFrontCellIds, splitTree?.root]);
 
   const updateFrontCells = (ids: string[], updates: Partial<StructureNode>) => {
-    if (!selectedNode?.structure) return;
-    let newStructure = selectedNode.structure;
+    if (!splitTree?.root) return;
+    let newStructure = splitTree.root;
     for (const id of ids) {
        const node = findNodeById(newStructure, id);
        if (node) {
          newStructure = replaceNodeById(newStructure, id, { ...node, ...updates });
        }
     }
-    onUpdateNode(selectedNode.id, { structure: newStructure });
+    onUpdateSplitTree(newStructure);
   };
 
   const updateFrontDividers = (ids: string[], updates: any) => {
-    if (!selectedNode?.structure) return;
+    if (!splitTree?.root) return;
     
-    let newStructure = selectedNode.structure;
+    let newStructure = splitTree.root;
     for (const id of ids) {
       const res = findDividerInStructure(newStructure, id);
       if (!res) continue;
-      const { parent, divider } = res;
+      const { parent } = res;
       const newParent = { ...parent };
       
       if (newParent.dividers) {
@@ -163,8 +175,9 @@ export default function EditorSidebarRight({
       if (newParent.frame) {
         const newFrame = { ...newParent.frame };
         for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
-          if (newFrame[edge as keyof typeof newFrame]?.id === id) {
-            newFrame[edge as keyof typeof newFrame] = { ...newFrame[edge as keyof typeof newFrame]!, ...updates };
+          const frameValue = newFrame[edge];
+          if (frameValue && typeof frameValue === 'object' && frameValue.id === id) {
+            newFrame[edge] = { ...frameValue, ...updates };
           }
         }
         newParent.frame = newFrame;
@@ -172,13 +185,13 @@ export default function EditorSidebarRight({
       
       newStructure = replaceNodeById(newStructure, parent.id, newParent);
     }
-    onUpdateNode(selectedNode.id, { structure: newStructure });
+    onUpdateSplitTree(newStructure);
   };
 
   const deleteFrontCells = (ids: string[]) => {
-    if (!selectedNode?.structure) return;
+    if (!splitTree?.root) return;
     
-    let newStructure: StructureNode | null = selectedNode.structure;
+    let newStructure: StructureNode | null = splitTree.root;
     
     const deleteNode = (root: StructureNode, id: string): StructureNode | null => {
       if (root.id === id) return null;
@@ -202,20 +215,20 @@ export default function EditorSidebarRight({
     for (const id of ids) {
       if (newStructure) {
         // Prevent deleting root
-        if (id === selectedNode.structure.id) continue;
+        if (id === splitTree.root.id) continue;
         newStructure = deleteNode(newStructure, id);
       }
     }
 
     if (newStructure) {
-      onUpdateNode(selectedNode.id, { structure: newStructure });
+      onUpdateSplitTree(newStructure);
       onSelectFrontCell([]);
     }
   };
 
   const deleteFrontDividers = (ids: string[]) => {
-    if (!selectedNode?.structure) return;
-    let newStructure = selectedNode.structure;
+    if (!splitTree?.root) return;
+    let newStructure = splitTree.root;
     
     for (const idToDelete of ids) {
         const res = findDividerInStructure(newStructure, idToDelete);
@@ -228,22 +241,23 @@ export default function EditorSidebarRight({
         if (newParent.frame) {
            const newFrame = { ...newParent.frame };
            for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
-              if (newFrame[edge as keyof typeof newFrame]?.id === idToDelete) {
-                 delete newFrame[edge as keyof typeof newFrame];
+              const frameValue = newFrame[edge];
+              if (frameValue && typeof frameValue === 'object' && frameValue.id === idToDelete) {
+                 delete newFrame[edge];
               }
            }
            newParent.frame = newFrame;
         }
         newStructure = replaceNodeById(newStructure, parent.id, newParent);
     }
-    onUpdateNode(selectedNode.id, { structure: newStructure });
+    onUpdateSplitTree(newStructure);
     onSelectFrontDividers([]);
   };
 
-  const hasFrontSubSelection = viewMode === ViewMode.FRONT && (selectedFrontCellIds.length > 0 || (!!frontDivider && selectedFrontDividerIds.length > 0));
+  const hasFrontSubSelection = viewMode === ViewType.FRONT && (selectedFrontCellIds.length > 0 || (!!frontDivider && selectedFrontDividerIds.length > 0));
 
   if (!selectedNode && !selectedLocation) {
-    const rootVisual = visuals.find(v => v.parentId === null && v.type === 'zone');
+    const rootVisual = visuals.find(v => v.parentVisualNodeId === null && v.visualizationType === 'zone');
     
     return (
       <div className="w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full overflow-hidden z-30">
@@ -271,7 +285,7 @@ export default function EditorSidebarRight({
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Spatial Bounds</p>
                     <div className="flex items-center justify-between">
                        <p className="text-xs font-bold text-slate-300">Dimensions</p>
-                       <p className="text-xs font-mono font-bold text-sky-400">{rootVisual ? `${rootVisual.width / 10}cm x ${rootVisual.depth / 10}cm` : 'N/A'}</p>
+                       <p className="text-xs font-mono font-bold text-sky-400">{rootVisual ? `${rootVisual.widthMm / 10}cm x ${rootVisual.depthMm / 10}cm` : 'N/A'}</p>
                     </div>
                  </div>
 
@@ -321,135 +335,205 @@ export default function EditorSidebarRight({
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 p-4 space-y-8">
         
         {/* TOP DOWN MULTI-SELECTION */}
-        {selectedNodes.length > 1 && viewMode === ViewMode.TOP_DOWN && (
+        {selectedNodes.length > 1 && viewMode === ViewType.TOP_DOWN && (
           <section className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-            <SectionHeader icon={<Layers />} label={`${selectedNodes.length} Objects Selected`} />
+            <div className="flex items-center justify-between">
+              <SectionHeader icon={<Layers />} label={`${selectedNodes.length} Objects Selected`} />
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={() => {
+                    const allLocked = selectedNodes.every(n => n.locked);
+                    onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { locked: !allLocked } })));
+                  }}
+                  className={`p-1.5 rounded-lg transition-colors ${selectedNodes.every(n => n.locked) ? 'bg-amber-500/10 text-amber-400' : 'hover:bg-slate-800 text-slate-500 hover:text-white'}`}
+                  title="Toggle Lock for All"
+                >
+                  {selectedNodes.every(n => n.locked) ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
             
-            <div className="space-y-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-750">
-              {/* Vertical Alignment - Aligns X values (Left/Center/Right) */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Vertical Alignment (X)</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button 
-                    onClick={() => {
-                      const minX = Math.min(...selectedNodes.map(n => n.x));
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { x: minX } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignStartVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Left</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const centers = selectedNodes.map(n => n.x + n.width / 2);
-                      const avgCenter = centers.reduce((a, b) => a + b, 0) / centers.length;
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { x: avgCenter - n.width / 2 } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignCenterVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Center</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const maxX = Math.max(...selectedNodes.map(n => n.x + n.width));
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { x: maxX - n.width } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignEndVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Right</span>
-                  </button>
+              <div className="space-y-4 p-4 rounded-2xl bg-slate-800/40 border border-slate-750">
+                {/* Vertical Alignment - Aligns X values */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Vertical Alignment (X-Axis)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={() => {
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rw = n.widthMm * cos + n.depthMm * sin;
+                          return { id: n.id, x1: (n.xMm + n.widthMm / 2) - rw / 2, rw, w: n.widthMm, locked: n.locked };
+                        });
+                        const minX1 = Math.min(...bboxes.map(b => b.x1));
+                        onUpdateNodes(bboxes.filter(b => !b.locked).map(b => ({ 
+                          id: b.id, 
+                          updates: { xMm: Math.round(minX1 + b.rw / 2 - b.w / 2) } 
+                        })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignStartVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Left</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const centers = selectedNodes.map(n => n.xMm + n.widthMm / 2);
+                        const avgCenter = centers.reduce((a, b) => a + b, 0) / centers.length;
+                        onUpdateNodes(selectedNodes.filter(n => !n.locked).map(n => ({ id: n.id, updates: { xMm: Math.round(avgCenter - n.widthMm / 2) } })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignCenterVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Center</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rw = n.widthMm * cos + n.depthMm * sin;
+                          return { id: n.id, x2: (n.xMm + n.widthMm / 2) + rw / 2, rw, w: n.widthMm, locked: n.locked };
+                        });
+                        const maxX2 = Math.max(...bboxes.map(b => b.x2));
+                        onUpdateNodes(bboxes.filter(b => !b.locked).map(b => ({ 
+                          id: b.id, 
+                          updates: { xMm: Math.round(maxX2 - b.rw / 2 - b.w / 2) } 
+                        })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignEndVertical className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Right</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Horizontal Alignment - Aligns Y values (Top/Middle/Bottom) */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Horizontal Alignment (Y)</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <button 
-                    onClick={() => {
-                      const minY = Math.min(...selectedNodes.map(n => n.y));
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { y: minY } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignStartHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Top</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const centers = selectedNodes.map(n => n.y + n.depth / 2);
-                      const avgCenter = centers.reduce((a, b) => a + b, 0) / centers.length;
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { y: avgCenter - n.depth / 2 } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignCenterHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Middle</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      const maxY = Math.max(...selectedNodes.map(n => n.y + n.depth));
-                      onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { y: maxY - n.depth } })));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <AlignEndHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Bottom</span>
-                  </button>
+                {/* Horizontal Alignment - Aligns Y values (Depth) */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Horizontal Alignment (Y-Axis)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button 
+                      onClick={() => {
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rh = n.widthMm * sin + n.depthMm * cos;
+                          return { id: n.id, y1: (n.yMm + n.depthMm / 2) - rh / 2, rh, d: n.depthMm, locked: n.locked };
+                        });
+                        const minY1 = Math.min(...bboxes.map(b => b.y1));
+                        onUpdateNodes(bboxes.filter(b => !b.locked).map(b => ({ 
+                          id: b.id, 
+                          updates: { yMm: Math.round(minY1 + b.rh / 2 - b.d / 2) } 
+                        })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignStartHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Top</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const centers = selectedNodes.map(n => n.yMm + n.depthMm / 2);
+                        const avgCenter = centers.reduce((a, b) => a + b, 0) / centers.length;
+                        onUpdateNodes(selectedNodes.filter(n => !n.locked).map(n => ({ id: n.id, updates: { yMm: Math.round(avgCenter - n.depthMm / 2) } })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignCenterHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Middle</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rh = n.widthMm * sin + n.depthMm * cos;
+                          return { id: n.id, y2: (n.yMm + n.depthMm / 2) + rh / 2, rh, d: n.depthMm, locked: n.locked };
+                        });
+                        const maxY2 = Math.max(...bboxes.map(b => b.y2));
+                        onUpdateNodes(bboxes.filter(b => !b.locked).map(b => ({ 
+                          id: b.id, 
+                          updates: { yMm: Math.round(maxY2 - b.rh / 2 - b.d / 2) } 
+                        })));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <AlignEndHorizontal className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Bottom</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Distribution */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Distribute Space</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => {
-                      if (selectedNodes.length < 3) return;
-                      const sorted = [...selectedNodes].sort((a, b) => a.x - b.x);
-                      const first = sorted[0];
-                      const last = sorted[sorted.length - 1];
-                      const totalSpan = (last.x + last.width) - first.x;
-                      const totalWidths = sorted.reduce((sum, n) => sum + n.width, 0);
-                      const gap = (totalSpan - totalWidths) / (sorted.length - 1);
-                      let currentX = first.x;
-                      onUpdateNodes(sorted.map(n => {
-                        const newX = currentX;
-                        currentX += n.width + gap;
-                        return { id: n.id, updates: { x: newX } };
-                      }));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <ArrowRightLeft className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Horizontal</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (selectedNodes.length < 3) return;
-                      const sorted = [...selectedNodes].sort((a, b) => a.y - b.y);
-                      const first = sorted[0];
-                      const last = sorted[sorted.length - 1];
-                      const totalSpan = (last.y + last.depth) - first.y;
-                      const totalDepths = sorted.reduce((sum, n) => sum + n.depth, 0);
-                      const gap = (totalSpan - totalDepths) / (sorted.length - 1);
-                      let currentY = first.y;
-                      onUpdateNodes(sorted.map(n => {
-                        const newY = currentY;
-                        currentY += n.depth + gap;
-                        return { id: n.id, updates: { y: newY } };
-                      }));
-                    }}
-                    className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
-                  >
-                    <ArrowUpDown className="w-4 h-4 text-slate-400 group-hover:text-white" />
-                    <span className="text-[8px] font-black uppercase text-slate-500">Vertical</span>
-                  </button>
+                {/* Distribution */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Distribute Space</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => {
+                        if (selectedNodes.length < 3) return;
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rw = n.widthMm * cos + n.depthMm * sin;
+                          return { id: n.id, x1: (n.xMm + n.widthMm / 2) - rw / 2, rw, w: n.widthMm, locked: n.locked };
+                        });
+                        const sorted = [...bboxes].sort((a, b) => a.x1 - b.x1);
+                        const first = sorted[0];
+                        const last = sorted[sorted.length - 1];
+                        const totalSpan = (last.x1 + last.rw) - first.x1;
+                        const totalWidths = sorted.reduce((sum, n) => sum + n.rw, 0);
+                        const gap = (totalSpan - totalWidths) / (sorted.length - 1);
+                        let currentX1 = first.x1;
+                        onUpdateNodes(sorted.map(n => {
+                          const targetX1 = currentX1;
+                          currentX1 += n.rw + gap;
+                          if (n.locked) return { id: n.id, updates: {} };
+                          return { id: n.id, updates: { xMm: Math.round(targetX1 + n.rw / 2 - n.w / 2) } };
+                        }).filter(u => Object.keys(u.updates).length > 0));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <ArrowRightLeft className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Horizontal</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (selectedNodes.length < 3) return;
+                        const bboxes = selectedNodes.map(n => {
+                          const rad = (n.rotationDeg || 0) * Math.PI / 180;
+                          const cos = Math.abs(Math.cos(rad));
+                          const sin = Math.abs(Math.sin(rad));
+                          const rh = n.widthMm * sin + n.depthMm * cos;
+                          return { id: n.id, y1: (n.yMm + n.depthMm / 2) - rh / 2, rh, d: n.depthMm, locked: n.locked };
+                        });
+                        const sorted = [...bboxes].sort((a, b) => a.y1 - b.y1);
+                        const first = sorted[0];
+                        const last = sorted[sorted.length - 1];
+                        const totalSpan = (last.y1 + last.rh) - first.y1;
+                        const totalDepths = sorted.reduce((sum, n) => sum + n.rh, 0);
+                        const gap = (totalSpan - totalDepths) / (sorted.length - 1);
+                        let currentY1 = first.y1;
+                        onUpdateNodes(sorted.map(n => {
+                          const targetY1 = currentY1;
+                          currentY1 += n.rh + gap;
+                          if (n.locked) return { id: n.id, updates: {} };
+                          return { id: n.id, updates: { yMm: Math.round(targetY1 + n.rh / 2 - n.d / 2) } };
+                        }).filter(u => Object.keys(u.updates).length > 0));
+                      }}
+                      className="p-2 bg-slate-900/50 hover:bg-slate-800 border border-slate-700 rounded-xl flex flex-col items-center gap-1 transition-all group"
+                    >
+                      <ArrowUpDown className="w-4 h-4 text-slate-400 group-hover:text-white" />
+                      <span className="text-[8px] font-black uppercase text-slate-500">Vertical</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
 
               {/* Bulk Rotation */}
               <div className="space-y-4 pt-4 border-t border-slate-700">
@@ -457,7 +541,7 @@ export default function EditorSidebarRight({
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Bulk Rotation</label>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { rotation: ((n.rotation || 0) + 90) % 360 } })))}
+                      onClick={() => onUpdateNodes(selectedNodes.filter(n => !n.locked).map(n => ({ id: n.id, updates: { rotationDeg: ((n.rotationDeg || 0) + 90) % 360 } })))}
                       className="p-1 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-white"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
@@ -469,7 +553,7 @@ export default function EditorSidebarRight({
                   {[0, 90, 180, 270].map(angle => (
                     <button
                       key={angle}
-                      onClick={() => onUpdateNodes(selectedNodes.map(n => ({ id: n.id, updates: { rotation: angle } })))}
+                      onClick={() => onUpdateNodes(selectedNodes.filter(n => !n.locked).map(n => ({ id: n.id, updates: { rotationDeg: angle } })))}
                       className="py-2 bg-slate-900 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-400 hover:text-sky-400 hover:border-sky-500/50 transition-all"
                     >
                       {angle}°
@@ -482,7 +566,7 @@ export default function EditorSidebarRight({
         )}
 
         {/* FRONT MULTI-SELECTION */}
-        {selectedFrontCellIds.length > 1 && viewMode === ViewMode.FRONT && (
+        {selectedFrontCellIds.length > 1 && viewMode === ViewType.FRONT && (
           <section className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="flex items-center justify-between">
               <SectionHeader icon={<LayoutGrid />} label={`${selectedFrontCellIds.length} Compartments`} />
@@ -535,7 +619,7 @@ export default function EditorSidebarRight({
               
               <button 
                 onClick={() => deleteFrontCells(selectedFrontCellIds)}
-                disabled={frontCells.some(c => c.type === 'container' && c.children && c.children.length > 0)}
+                disabled={frontCells.some(c => c.nodeKind === 'container' && c.children && c.children.length > 0)}
                 className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-all border border-red-500/10 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -551,12 +635,12 @@ export default function EditorSidebarRight({
         {selectedNodes.length <= 1 && selectedFrontCellIds.length <= 1 && (
           <>
             {/* Front View Selection Inspectors */}
-            {viewMode === ViewMode.FRONT && (
+            {viewMode === ViewType.FRONT && (
               <>
                 {frontCell && (
                   <section className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex items-center justify-between">
-                      <SectionHeader icon={<LayoutGrid />} label={frontCell.type === 'container' ? 'Container Section' : 'Compartment'} />
+                      <SectionHeader icon={<LayoutGrid />} label={frontCell.nodeKind === 'container' ? 'Container Section' : 'Compartment'} />
                       <div className="flex items-center gap-1">
                         <button 
                           onClick={() => updateFrontCells([frontCell.id], { locked: !frontCell.locked })}
@@ -628,11 +712,19 @@ export default function EditorSidebarRight({
                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Logical mapping</label>
                         <select 
                           value={frontCell.locationId || ''}
-                          onChange={(e) => updateFrontCells([frontCell.id], { locationId: e.target.value || null })}
+                          onChange={(e) => {
+                            const newLocId = e.target.value || null;
+                            if (newLocId && isLocationMapped(visuals, newLocId, { nodeId: selectedNode.id, structureNodeId: frontCell.id })) {
+                               const loc = locations.find(l => l.id === newLocId);
+                               alert(`Location ${loc?.code || newLocId} is already mapped elsewhere.`);
+                               return;
+                            }
+                            updateFrontCells([frontCell.id], { locationId: newLocId });
+                          }}
                           className="w-full bg-slate-900/50 border border-slate-700 text-xs font-black text-slate-300 rounded-xl px-4 py-2.5 outline-none cursor-pointer hover:bg-slate-800 transition-all focus:ring-1 focus:ring-sky-500 appearance-none"
                         >
                           <option value="">Virtual Node (Only)</option>
-                          {locations.filter(l => l.locationType !== 'warehouse' && l.locationType !== 'zone').map(loc => (
+                          {locations.filter(l => l.locationCategory !== 'warehouse' && l.locationCategory !== 'zone').map(loc => (
                             <option key={loc.id} value={loc.id}>{loc.code} - {loc.name}</option>
                           ))}
                         </select>
@@ -650,12 +742,12 @@ export default function EditorSidebarRight({
                     {frontCell.id !== selectedNode?.structure?.id && (
                       <button 
                         onClick={() => deleteFrontCells([frontCell.id])}
-                        disabled={frontCell.type === 'container' && frontCell.children && frontCell.children.length > 0}
+                        disabled={frontCell.nodeKind === 'container' && frontCell.children && frontCell.children.length > 0}
                         className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-all border border-red-500/10 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed"
                         title={frontCell.type === 'container' && frontCell.children && frontCell.children.length > 0 ? "Cannot delete a container with sections inside" : "Delete section"}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        {frontCell.type === 'container' && frontCell.children && frontCell.children.length > 0 ? "Sections Protected" : "Delete"}
+                        {frontCell.nodeKind === 'container' && frontCell.children && frontCell.children.length > 0 ? "Sections Protected" : "Delete"}
                       </button>
                     )}
                 </div>
@@ -790,31 +882,31 @@ export default function EditorSidebarRight({
 
         {!hasFrontSubSelection && (
           <>
-            {viewMode === ViewMode.FRONT && selectedNode?.structure && (
+            {viewMode === ViewType.FRONT && splitTree?.root && (
               <section className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <SectionHeader icon={<Maximize />} label="Structure Outer Frame" />
                 <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-750 space-y-4">
                   <div className="grid grid-cols-2 gap-2">
                     {(['top', 'bottom', 'left', 'right'] as const).map(edge => {
-                      const isActive = !!selectedNode.structure?.frame?.[edge];
+                      const isActive = !!splitTree.root.frame?.[edge];
                       return (
                         <button
                           key={edge}
                           onClick={() => {
-                            const structure = { ...selectedNode.structure! };
+                            const structure = { ...splitTree.root };
                             const frame = { ...(structure.frame || {}) };
                             if (isActive) {
                               delete frame[edge];
                             } else {
                               frame[edge] = {
                                 id: `frame-${edge}-${Math.random().toString(36).substr(2, 9)}`,
-                                thickness: 2,
+                                thicknessMm: 20,
                                 type: 'solid',
                                 material: 'wood',
                                 color: '#78350f'
-                              };
+                              } as LayoutSplitDivider;
                             }
-                            onUpdateNode(selectedNode.id, { structure: { ...structure, frame } });
+                            onUpdateSplitTree({ ...structure, frame });
                           }}
                           className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${isActive ? 'bg-sky-500/10 border-sky-500 text-sky-400' : 'bg-slate-900/50 border-slate-700 text-slate-500 hover:border-slate-600'}`}
                         >
@@ -825,28 +917,28 @@ export default function EditorSidebarRight({
                     })}
                   </div>
 
-                  {selectedNode.structure.frame && Object.keys(selectedNode.structure.frame).length > 0 && (
+                  {splitTree.root.frame && Object.keys(splitTree.root.frame).length > 0 && (
                     <div className="space-y-4 pt-4 border-t border-slate-750">
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Thickness</label>
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Thickness (mm)</label>
                         <div className="flex items-center gap-3">
                           <input 
                             type="number"
-                            value={Object.values(selectedNode.structure.frame).find(f => !!f)?.thickness || 2}
+                            value={(Object.values(splitTree.root.frame || {}).find(f => f && typeof f === 'object' && 'thicknessMm' in f) as LayoutSplitDivider | undefined)?.thicknessMm || 20}
                             onChange={(e) => {
-                              const thickness = Math.max(0, parseInt(e.target.value) || 0);
-                              const structure = { ...selectedNode.structure! };
+                              const thicknessMm = Math.max(0, parseInt(e.target.value) || 0);
+                              const structure = { ...splitTree.root };
                               const frame = { ...structure.frame };
-                              for (const key in frame) {
-                                if (frame[key as keyof typeof frame]) {
-                                  frame[key as keyof typeof frame] = { ...frame[key as keyof typeof frame]!, thickness };
+                              for (const key of ['top', 'bottom', 'left', 'right'] as const) {
+                                if (frame[key]) {
+                                  frame[key] = { ...frame[key]!, thicknessMm };
                                 }
                               }
-                              onUpdateNode(selectedNode.id, { structure: { ...structure, frame } });
+                              onUpdateSplitTree({ ...structure, frame });
                             }}
                             className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-white font-mono text-xs outline-none focus:ring-1 focus:ring-sky-500 transition-all"
                           />
-                          <span className="text-[10px] font-black text-slate-600">CM</span>
+                          <span className="text-[10px] font-black text-slate-600">MM</span>
                         </div>
                       </div>
                       <div className="space-y-1.5">
@@ -856,17 +948,17 @@ export default function EditorSidebarRight({
                             <button
                               key={m}
                               onClick={() => {
-                                const structure = { ...selectedNode.structure! };
+                                const structure = { ...splitTree.root };
                                 const frame = { ...structure.frame };
                                 const color = m === 'wood' ? '#78350f' : m === 'metal' ? '#475569' : '#0ea5e9';
-                                for (const key in frame) {
-                                  if (frame[key as keyof typeof frame]) {
-                                    frame[key as keyof typeof frame] = { ...frame[key as keyof typeof frame]!, material: m as any, color };
+                                for (const key of ['top', 'bottom', 'left', 'right'] as const) {
+                                  if (frame[key]) {
+                                    frame[key] = { ...frame[key]!, material: m, color };
                                   }
                                 }
-                                onUpdateNode(selectedNode.id, { structure: { ...structure, frame } });
+                                onUpdateSplitTree({ ...structure, frame });
                               }}
-                              className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase border transition-all ${Object.values(selectedNode.structure!.frame!).find(f => !!f)?.material === m ? 'bg-sky-500 border-sky-500 text-slate-950' : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'}`}
+                              className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase border transition-all ${(Object.values(splitTree.root.frame || {}).find(f => f && typeof f === 'object') as LayoutSplitDivider | undefined)?.material === m ? 'bg-sky-500 border-sky-500 text-slate-950' : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'}`}
                             >
                               {m}
                             </button>
@@ -878,6 +970,8 @@ export default function EditorSidebarRight({
                 </div>
               </section>
             )}
+          </>
+        )}
             {/* State Badges */}
             <div className="flex flex-wrap gap-2">
                 {isLinked && <Badge color="sky" label="Linked-State" icon={<LinkIcon className="w-3 h-3" />} />}
@@ -889,54 +983,67 @@ export default function EditorSidebarRight({
             {/* Visual Properties Section */}
             {selectedNode && (
               <section className="space-y-4">
-                 <SectionHeader icon={<Maximize2 />} label="Geometry" />
+                 <div className="flex items-center justify-between">
+                   <SectionHeader icon={<Maximize2 />} label="Geometry" />
+                   <button 
+                     onClick={() => onUpdateNode(selectedNode.id, { locked: !selectedNode.locked })}
+                     className={`p-1.5 rounded-lg transition-colors ${selectedNode.locked ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20' : 'hover:bg-slate-800 text-slate-400 hover:text-amber-500'}`}
+                     title={selectedNode.locked ? "Unlock Object" : "Lock Object"}
+                   >
+                     {selectedNode.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                   </button>
+                 </div>
              <div className="grid grid-cols-2 gap-3">
-                {viewMode === ViewMode.TOP_DOWN ? (
+                {viewMode === ViewType.TOP_DOWN ? (
                   <>
                     <EditablePropBox 
                       label="Pos-X" 
-                      value={selectedNode.x} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { x: val })} 
+                      value={selectedNode.xMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { xMm: val })} 
+                      disabled={selectedNode.locked}
                     />
                     <EditablePropBox 
                       label="Pos-Y" 
-                      value={selectedNode.y} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { y: val })} 
+                      value={selectedNode.yMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { yMm: val })} 
+                      disabled={selectedNode.locked}
                     />
                     <EditablePropBox 
                       label="Width" 
-                      value={selectedNode.width} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { width: val })} 
+                      value={selectedNode.widthMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { widthMm: val })} 
+                      disabled={selectedNode.locked}
                     />
                     <EditablePropBox 
                       label="Depth" 
-                      value={selectedNode.depth} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { depth: val })} 
+                      value={selectedNode.depthMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { depthMm: val })} 
+                      disabled={selectedNode.locked}
                     />
                   </>
                 ) : (
                   <>
                     <EditablePropBox 
                       label="Width" 
-                      value={selectedNode.width} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { width: val })} 
+                      value={selectedNode.widthMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { widthMm: val })} 
                     />
                     <EditablePropBox 
                       label="Height" 
-                      value={selectedNode.height} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { height: val })} 
+                      value={selectedNode.heightMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { heightMm: val })} 
                     />
                     <EditablePropBox 
                       label="Elev-Z" 
-                      value={selectedNode.z} 
-                      unit="cm"
-                      onChange={(val) => onUpdateNode(selectedNode.id, { z: val })} 
+                      value={selectedNode.zMm} 
+                      unit="mm"
+                      onChange={(val) => onUpdateNode(selectedNode.id, { zMm: val })} 
                     />
                     <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-750 flex items-center justify-center">
                        <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest italic">Z-Axis Focus</span>
@@ -946,9 +1053,9 @@ export default function EditorSidebarRight({
                 <div className="col-span-2">
                    <EditablePropBox 
                      label="Rotation" 
-                     value={selectedNode.rotation} 
+                     value={selectedNode.rotationDeg} 
                      unit="°"
-                     onChange={(val) => onUpdateNode(selectedNode.id, { rotation: val })} 
+                     onChange={(val) => onUpdateNode(selectedNode.id, { rotationDeg: val })} 
                    />
                    <div className="flex gap-2 mt-2">
                      <select 
@@ -995,8 +1102,8 @@ export default function EditorSidebarRight({
                    <Palette className="w-4 h-4 text-slate-700" />
                 </div>
              </div>
-           <             {/* Zone Specific Settings */}
-             {selectedNode.type === 'zone' && (
+             {/* Zone Specific Settings */}
+             {selectedNode.visualizationType === 'zone' && (
                <section className="space-y-4 pt-4 border-t border-slate-800">
                  <SectionHeader icon={<MapIcon />} label="Zone Configuration" />
                  <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-750 space-y-4">
@@ -1043,27 +1150,72 @@ export default function EditorSidebarRight({
                      </div>
                    </div>
 
-                   <div className="space-y-1.5">
-                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Pattern</label>
-                     <div className="grid grid-cols-4 gap-1">
-                         {(['solid', 'stripes-thin', 'stripes-wide', 'diagonal-thin', 'diagonal-wide', 'dots', 'grid'] as const).map(pattern => (
-                           <button
-                             key={pattern}
-                             onClick={() => onUpdateNode(selectedNode.id, { zonePattern: pattern })}
-                             className={`py-2 rounded-lg border text-[7px] font-black uppercase transition-all ${selectedNode.zonePattern === pattern || (!selectedNode.zonePattern && pattern === 'solid') ? 'bg-sky-500 border-sky-500 text-slate-950 shadow-[0_0_10px_rgba(14,165,233,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-white hover:border-slate-700'}`}
-                             title={pattern.replace('-', ' ')}
-                           >
-                             {pattern === 'solid' ? 'SLD' : 
+                    <div className="space-y-6 pt-2 border-t border-slate-800/50">
+                      {/* Opacity Controls */}
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center px-1">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-slate-400">Whole Zone Opacity</label>
+                            <span className="text-[10px] font-mono text-sky-400">{Math.round((selectedNode.opacity ?? 1) * 100)}%</span>
+                          </div>
+                          <input 
+                            type="range" min="0" max="1" step="0.01"
+                            value={selectedNode.opacity ?? 1}
+                            onChange={(e) => onUpdateNode(selectedNode.id, { opacity: parseFloat(e.target.value) })}
+                            className="w-full accent-sky-500 h-1 bg-slate-950 rounded-lg appearance-none cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center px-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-slate-400">Primary</label>
+                              <span className="text-[9px] font-mono text-sky-400">{Math.round((selectedNode.primaryOpacity ?? 0.3) * 100)}%</span>
+                            </div>
+                            <input 
+                              type="range" min="0" max="1" step="0.01"
+                              value={selectedNode.primaryOpacity ?? 0.3}
+                              onChange={(e) => onUpdateNode(selectedNode.id, { primaryOpacity: parseFloat(e.target.value) })}
+                              className="w-full accent-sky-400 h-1 bg-slate-950 rounded-lg appearance-none cursor-pointer"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center px-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-slate-400">Secondary</label>
+                              <span className="text-[9px] font-mono text-sky-400">{Math.round((selectedNode.secondaryOpacity ?? 0.3) * 100)}%</span>
+                            </div>
+                            <input 
+                              type="range" min="0" max="1" step="0.01"
+                              value={selectedNode.secondaryOpacity ?? 0.3}
+                              onChange={(e) => onUpdateNode(selectedNode.id, { secondaryOpacity: parseFloat(e.target.value) })}
+                              className="w-full accent-pink-400 h-1 bg-slate-950 rounded-lg appearance-none cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pattern Selector */}
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Pattern</label>
+                        <div className="grid grid-cols-4 gap-1">
+                          {(['solid', 'stripes-thin', 'stripes-wide', 'diagonal-thin', 'diagonal-wide', 'dots', 'grid'] as const).map(pattern => (
+                            <button
+                              key={pattern}
+                              onClick={() => onUpdateNode(selectedNode.id, { zonePattern: pattern })}
+                              className={`py-2 rounded-lg border text-[7px] font-black uppercase transition-all ${selectedNode.zonePattern === pattern || (!selectedNode.zonePattern && pattern === 'solid') ? 'bg-sky-500 border-sky-500 text-slate-950 shadow-[0_0_10px_rgba(14,165,233,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-white hover:border-slate-700'}`}
+                              title={pattern.replace('-', ' ')}
+                            >
+                              {pattern === 'solid' ? 'SLD' : 
                                pattern === 'stripes-thin' ? 'ST' : 
                                pattern === 'stripes-wide' ? 'SW' : 
                                pattern === 'diagonal-thin' ? 'DT' : 
                                pattern === 'diagonal-wide' ? 'DW' : 
                                pattern === 'dots' ? 'DOT' : 'GRD'}
-                           </button>
-                         ))}
-                       </div>
-                     </div>
-
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                    <div className="flex items-center justify-between p-3 bg-slate-950/50 border border-slate-800 rounded-xl mt-2">
                      <div className="flex items-center gap-2">
                        <AlertTriangle className={`w-3.5 h-3.5 ${selectedNode.blockPlacement ? 'text-rose-500' : 'text-slate-600'}`} />
@@ -1078,9 +1230,9 @@ export default function EditorSidebarRight({
                    </div>
                  </div>
                </section>
-             )}         )}
+             )}
 
-             {viewMode === ViewMode.FRONT && selectedNode.frontSetupDone && (
+             {viewMode === ViewType.FRONT && selectedNode.frontSetupDone && (
                <div className="pt-4 border-t border-slate-800 space-y-4">
                  <SectionHeader icon={<Palette />} label="Front Shape & Corners" />
                  
@@ -1212,12 +1364,12 @@ export default function EditorSidebarRight({
                    </div>
                    <div className="flex-1 overflow-hidden">
                       <p className="text-xs font-black text-white uppercase tracking-tight truncate">{selectedLocation?.code || "NULL-POINTER"}</p>
-                      <p className="text-[9px] text-slate-600 font-mono uppercase tracking-widest italic">{selectedLocation?.locationType}</p>
+                      <p className="text-[9px] text-slate-600 font-mono uppercase tracking-widest italic">{selectedLocation?.locationCategory}</p>
                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-750 pt-4">
-                    <Detail label="Volumetric" value={selectedLocation?.allowsStock ? "Allowed" : "Restricted"} />
+                    <Detail label="Volumetric" value={selectedLocation?.canStoreInventory ? "Allowed" : "Restricted"} />
                     <Detail label="SKU Density" value={selectedLocation?.skuCount?.toString() || "0"} />
                     <Detail label="Stock Level" value={selectedLocation?.stockCount?.toString() || "0 UNIT"} />
                     <Detail label="Parent Node" value={locations.find(l => l.id === selectedLocation?.parentId)?.code || "ROOT-SYS"} />
@@ -1247,7 +1399,7 @@ export default function EditorSidebarRight({
                    <PrimaryBtn 
                      icon={selectedNode.frontSetupDone ? <Maximize2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />} 
                      label={selectedNode.frontSetupDone ? "Edit Front View" : "Set up front view"} 
-                     onClick={() => onSetViewMode(ViewMode.FRONT)} 
+                     onClick={() => onSetViewMode(ViewType.FRONT)} 
                      variant={selectedNode.frontSetupDone ? "outline" : "solid"}
                    />
                 )}
@@ -1306,8 +1458,8 @@ export default function EditorSidebarRight({
              </div>
           )}
         </section>
-          </>
-        )}
+       </>
+     )}
       </div>
 
       <AnimatePresence>
@@ -1372,22 +1524,23 @@ function StatRow({ label, value }: { label: string, value: string }) {
   );
 }
 
-function EditablePropBox({ label, value, unit, onChange }: { label: string, value: number, unit: string, onChange: (val: number) => void }) {
+function EditablePropBox({ label, value, unit, onChange, disabled }: { label: string, value: number, unit: string, onChange: (val: number) => void, disabled?: boolean }) {
   // Convert mm internal to cm UI if unit is cm
   const displayValue = value;
   
   return (
-    <div className="p-3 bg-slate-800/40 border border-slate-750 rounded-xl relative group focus-within:border-sky-500/50 transition-all">
+    <div className={`p-3 bg-slate-800/40 border border-slate-750 rounded-xl relative group focus-within:border-sky-500/50 transition-all ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[8px] font-black text-slate-700 uppercase tracking-widest absolute top-2 right-3 italic group-hover:text-sky-500/40 transition-colors">{unit}</span>
       <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1 italic">{label}</p>
       <input 
         type="number"
         value={displayValue}
+        disabled={disabled}
         onChange={(e) => {
-          const val = Number(e.target.value);
+          const val = Math.round(Number(e.target.value));
           onChange(val);
         }}
-        className="w-full bg-transparent border-none p-0 text-[11px] font-bold text-slate-300 font-mono tracking-tighter outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className={`w-full bg-transparent border-none p-0 text-[11px] font-bold text-slate-300 font-mono tracking-tighter outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${disabled ? 'cursor-not-allowed' : ''}`}
       />
     </div>
   );

@@ -81,6 +81,7 @@ const IconRenderer = ({ name, className, color }: { name: string, className?: st
 };
 import { motion, AnimatePresence } from 'motion/react';
 import LocationModal from './LocationModal';
+import { findNodeByLocationId } from '../../lib/structureUtils';
 
 interface LocationsPageProps {
   locations: LogicalLocation[];
@@ -100,7 +101,7 @@ export default function LocationsPage({
   onNavigateToWorkspace
 }: LocationsPageProps) {
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(locations[0]?.id || null);
-  const [expandedIds, setExpandedIds] = useState<string[]>(['l1', 'l2']);
+  const [expandedIds, setExpandedIds] = useState<string[]>(['l-wh-01', 'l-zone-pick', 'l-aisle-a1', 'l-rack-a1-r01']);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -141,7 +142,7 @@ export default function LocationsPage({
   }
 
   const getMappingStatus = (locId: string): MappingStatus => {
-    const isMapped = visuals.some(v => v.locationId === locId);
+    const isMapped = visuals.some(v => v.locationId === locId) || visuals.some(v => v.structure && findNodeByLocationId(v.structure, locId));
     return isMapped ? MappingStatus.MAPPED : MappingStatus.UNMAPPED;
   };
 
@@ -162,8 +163,8 @@ export default function LocationsPage({
         name: data.name || 'New Location',
         description: data.description || '',
         parentId: data.parentId === 'ROOT-SYS' || data.parentId === '' ? null : data.parentId || null,
-        locationType: data.locationType || LocationType.BIN,
-        allowsStock: data.allowsStock ?? true,
+        locationCategory: data.locationCategory || LocationType.BIN,
+        canStoreInventory: data.canStoreInventory ?? true,
         isReceivable: data.isReceivable ?? true,
         isPickable: data.isPickable ?? true,
         isVirtual: data.isVirtual ?? false,
@@ -297,7 +298,7 @@ export default function LocationsPage({
     const isExpanded = expandedIds.includes(location.id) || searchQuery !== '';
     const isSelected = selectedLocationId === location.id;
 
-    const category = LOCATION_CATEGORIES[location.locationType];
+    const category = LOCATION_CATEGORIES[location.locationCategory];
     const iconName = location.icon || category?.iconName || 'Box';
     const iconColorClass = location.color || (isSelected ? 'text-sky-400' : 'text-slate-500 group-hover:text-slate-400');
     
@@ -519,12 +520,12 @@ export default function LocationsPage({
                     <div>
                       <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                           <IconRenderer name={selectedLocation.icon || LOCATION_CATEGORIES[selectedLocation.locationType]?.iconName || 'Database'} className={`w-6 h-6 ${selectedLocation.color || 'text-sky-400'}`} />
+                           <IconRenderer name={selectedLocation.icon || LOCATION_CATEGORIES[selectedLocation.locationCategory]?.iconName || 'Database'} className={`w-6 h-6 ${selectedLocation.color || 'text-sky-400'}`} />
                            {selectedLocation.name}
                         </h1>
                         <div className="px-2 py-0.5 rounded items-center justify-center bg-slate-800 border border-slate-700 text-[9px] font-black text-slate-400 uppercase tracking-widest flex gap-1.5 mt-1">
-                          <IconRenderer name={LOCATION_CATEGORIES[selectedLocation.locationType]?.iconName || 'Box'} className={`w-3 h-3 ${selectedLocation.color || 'text-slate-500'}`} />
-                          {LOCATION_CATEGORIES[selectedLocation.locationType]?.label || selectedLocation.locationType}
+                          <IconRenderer name={LOCATION_CATEGORIES[selectedLocation.locationCategory]?.iconName || 'Box'} className={`w-3 h-3 ${selectedLocation.color || 'text-slate-500'}`} />
+                          {LOCATION_CATEGORIES[selectedLocation.locationCategory]?.label || selectedLocation.locationCategory}
                         </div>
                       </div>
                       <div className="flex items-center mt-2 inline-flex">
@@ -683,16 +684,16 @@ export default function LocationsPage({
                         )}
                         <div className={isCompactMode ? 'flex items-center gap-4' : 'p-6'}>
                           <div className={isCompactMode ? 'flex items-center gap-3' : 'flex items-start gap-4 mb-4'}>
-                            <div className={isCompactMode ? `p-2 rounded-lg bg-slate-800 border border-slate-700 ${LOCATION_CATEGORIES[selectedLocation.locationType]?.color || 'text-sky-400'}` : `p-4 rounded-2xl bg-slate-800 border border-slate-700 ${LOCATION_CATEGORIES[selectedLocation.locationType]?.color || 'text-sky-400'}`}>
-                              <IconRenderer name={LOCATION_CATEGORIES[selectedLocation.locationType]?.iconName || 'Database'} className={isCompactMode ? 'w-4 h-4' : 'w-6 h-6'} />
+                            <div className={isCompactMode ? `p-2 rounded-lg bg-slate-800 border border-slate-700 ${LOCATION_CATEGORIES[selectedLocation.locationCategory]?.color || 'text-sky-400'}` : `p-4 rounded-2xl bg-slate-800 border border-slate-700 ${LOCATION_CATEGORIES[selectedLocation.locationCategory]?.color || 'text-sky-400'}`}>
+                              <IconRenderer name={LOCATION_CATEGORIES[selectedLocation.locationCategory]?.iconName || 'Database'} className={isCompactMode ? 'w-4 h-4' : 'w-6 h-6'} />
                             </div>
                             <div>
                               <h3 className={isCompactMode ? 'text-xs font-black text-white uppercase' : 'text-lg font-black text-white tracking-tight'}>
-                                {LOCATION_CATEGORIES[selectedLocation.locationType]?.label}
+                                {LOCATION_CATEGORIES[selectedLocation.locationCategory]?.label}
                               </h3>
                               {!isCompactMode && (
                                 <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">
-                                  {LOCATION_CATEGORIES[selectedLocation.locationType]?.description}
+                                  {LOCATION_CATEGORIES[selectedLocation.locationCategory]?.description}
                                 </p>
                               )}
                             </div>
@@ -757,7 +758,7 @@ export default function LocationsPage({
                           <div className="p-6">
                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-4">Functional Capabilities</p>
                             <div className="grid grid-cols-2 gap-3">
-                              <BehaviorIndicator label="Stores Inventory" active={selectedLocation.allowsStock} icon={<Database className="w-3.5 h-3.5" />} />
+                              <BehaviorIndicator label="Stores Inventory" active={selectedLocation.canStoreInventory} icon={<Database className="w-3.5 h-3.5" />} />
                               <BehaviorIndicator label="Pickable" active={selectedLocation.isPickable} icon={<RotateCcw className="w-3.5 h-3.5" />} />
                               <BehaviorIndicator label="Receivable" active={selectedLocation.isReceivable} icon={<Inbox className="w-3.5 h-3.5" />} />
                               <BehaviorIndicator label="Virtual" active={selectedLocation.isVirtual} icon={<Zap className="w-3.5 h-3.5" />} />
@@ -768,7 +769,7 @@ export default function LocationsPage({
 
                       {isCompactMode && (
                         <>
-                          <CompactIndicator label="Stockable" active={selectedLocation.allowsStock} icon={<Database className="w-3 h-3" />} />
+                          <CompactIndicator label="Stockable" active={selectedLocation.canStoreInventory} icon={<Database className="w-3 h-3" />} />
                           <CompactIndicator label="Pickable" active={selectedLocation.isPickable} icon={<RotateCcw className="w-3 h-3" />} />
                           <CompactIndicator label="Receivable" active={selectedLocation.isReceivable} icon={<Inbox className="w-3 h-3" />} />
                           <CompactIndicator label="Virtual" active={selectedLocation.isVirtual} icon={<Zap className="w-3 h-3" />} />
@@ -800,10 +801,10 @@ export default function LocationsPage({
                           <div className="p-6">
                             {selectedLocation.physicalMetadata ? (
                               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                                <DetailItem label="Width" value={`${selectedLocation.physicalMetadata.width} mm`} isMono />
-                                <DetailItem label="Height" value={`${selectedLocation.physicalMetadata.height} mm`} isMono />
-                                <DetailItem label="Depth" value={`${selectedLocation.physicalMetadata.depth} mm`} isMono />
-                                <DetailItem label="Weight Cap." value={`${selectedLocation.physicalMetadata.weightCapacity} kg`} isMono />
+                                <DetailItem label="Width" value={`${selectedLocation.physicalMetadata.widthMm} mm`} isMono />
+                                <DetailItem label="Height" value={`${selectedLocation.physicalMetadata.heightMm} mm`} isMono />
+                                <DetailItem label="Depth" value={`${selectedLocation.physicalMetadata.depthMm} mm`} isMono />
+                                <DetailItem label="Weight Cap." value={`${selectedLocation.physicalMetadata.weightCapacityKg} kg`} isMono />
                               </div>
                             ) : (
                               <div className="py-4 text-center">
@@ -825,12 +826,12 @@ export default function LocationsPage({
                            <div className="flex items-center gap-4">
                              {selectedLocation.physicalMetadata ? (
                                <span className="text-[10px] font-mono font-bold text-slate-400">
-                                 {selectedLocation.physicalMetadata.width}x{selectedLocation.physicalMetadata.height}x{selectedLocation.physicalMetadata.depth}mm
+                                 {selectedLocation.physicalMetadata.widthMm}x{selectedLocation.physicalMetadata.heightMm}x{selectedLocation.physicalMetadata.depthMm}mm
                                </span>
                              ) : (
                                <span className="text-[10px] font-bold text-slate-700">NA</span>
                              )}
-                             <MappingBadge count={visuals.filter(v => v.locationId === selectedLocation.id).length} />
+                             <MappingBadge count={visuals.filter(v => v.locationId === selectedLocation.id || (v.structure && findNodeByLocationId(v.structure, selectedLocation.id))).length} />
                            </div>
                         </div>
                       )}
@@ -867,13 +868,25 @@ export default function LocationsPage({
                                 </div>
                                 <div>
                                   <p className="text-[11px] font-bold text-emerald-500 uppercase tracking-widest">Visualized</p>
-                                  <p className="text-[10px] text-slate-500 mt-0.5">Linked to {visuals.filter(v => v.locationId === selectedLocation.id).length} workspace layouts.</p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">Linked to {visuals.filter(v => v.locationId === selectedLocation.id || (v.structure && findNodeByLocationId(v.structure, selectedLocation.id))).length} workspace layouts.</p>
                                 </div>
                               </div>
                               <div className="space-y-2">
-                                <button className="w-full py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[10px] font-black uppercase tracking-widest text-sky-400 hover:bg-sky-500 hover:text-slate-950 transition-all">
-                                  Open Visualizations
-                                </button>
+                                {visuals
+                                  .filter(v => v.locationId === selectedLocation.id || (v.structure && findNodeByLocationId(v.structure, selectedLocation.id)))
+                                  .map(v => {
+                                     const layout = layouts.find(l => l.id === v.layoutId);
+                                     return (
+                                       <button 
+                                         key={`${v.id}-${v.layoutId}`}
+                                         onClick={() => onNavigateToWorkspace(v.layoutId)}
+                                         className="w-full py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[10px] font-black uppercase tracking-widest text-sky-400 hover:bg-sky-500 hover:text-slate-950 transition-all flex items-center justify-center gap-2"
+                                       >
+                                         <MoveUpRight className="w-3.5 h-3.5" />
+                                         Open in {layout?.name || 'Layout'}
+                                       </button>
+                                     );
+                                  })}
                                 <button className="w-full py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-all">
                                   Create Additional Visual
                                 </button>
@@ -950,8 +963,8 @@ export default function LocationsPage({
                                 childListDensity === 'COMFORTABLE' ? (
                                   <div key={child.id} onClick={() => setSelectedLocationId(child.id)} className="flex items-center justify-between p-4 rounded-2xl bg-slate-800/20 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-800/40 transition-all cursor-pointer group shadow-sm">
                                     <div className="flex items-center gap-4">
-                                      <div className={`w-12 h-12 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0 ${LOCATION_CATEGORIES[child.locationType]?.color || 'text-slate-500'}`}>
-                                         <IconRenderer name={child.icon || LOCATION_CATEGORIES[child.locationType]?.iconName || 'Box'} className="w-6 h-6" />
+                                      <div className={`w-12 h-12 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0 ${LOCATION_CATEGORIES[child.locationCategory]?.color || 'text-slate-500'}`}>
+                                         <IconRenderer name={child.icon || LOCATION_CATEGORIES[child.locationCategory]?.iconName || 'Box'} className="w-6 h-6" />
                                       </div>
                                       <div className="overflow-hidden">
                                         <p className="text-xs font-black text-white truncate">{child.name}</p>
@@ -961,7 +974,7 @@ export default function LocationsPage({
                                         </div>
                                         <div className="flex items-center gap-3 mt-1.5">
                                            <span className="text-[9px] font-mono text-emerald-500 bg-emerald-500/5 px-1.5 py-0.5 rounded border border-emerald-500/10">{child.stockCount || 0} stocks</span>
-                                           <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{LOCATION_CATEGORIES[child.locationType]?.label}</span>
+                                           <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">{LOCATION_CATEGORIES[child.locationCategory]?.label}</span>
                                         </div>
                                       </div>
                                     </div>
@@ -971,11 +984,11 @@ export default function LocationsPage({
                                   <div key={child.id} onClick={() => setSelectedLocationId(child.id)} className="flex items-center justify-between py-1.5 px-4 rounded-lg bg-slate-950/30 border border-transparent hover:border-slate-800 hover:bg-slate-800/40 transition-all cursor-pointer group">
                                      <div className="flex items-center gap-4 flex-1">
                                         <div className="flex items-center gap-2 w-48 shrink-0">
-                                           <IconRenderer name={child.icon || LOCATION_CATEGORIES[child.locationType]?.iconName || 'Box'} className={`w-3.5 h-3.5 ${LOCATION_CATEGORIES[child.locationType]?.color || 'text-slate-600'}`} />
+                                           <IconRenderer name={child.icon || LOCATION_CATEGORIES[child.locationCategory]?.iconName || 'Box'} className={`w-3.5 h-3.5 ${LOCATION_CATEGORIES[child.locationCategory]?.color || 'text-slate-600'}`} />
                                            <span className="text-[11px] font-bold text-slate-200 truncate group-hover:text-white transition-colors">{child.name}</span>
                                         </div>
                                         <span className="w-24 text-[10px] font-mono font-bold text-sky-500/70 group-hover:text-sky-400 transition-colors uppercase truncate">{child.code}</span>
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 w-32">{LOCATION_CATEGORIES[child.locationType]?.label}</span>
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 w-32">{LOCATION_CATEGORIES[child.locationCategory]?.label}</span>
                                         <div className="flex items-center gap-1.5 w-24">
                                            <Package className="w-3 h-3 text-slate-700" />
                                            <span className="text-[10px] font-mono text-slate-500">{child.stockCount || 0}</span>

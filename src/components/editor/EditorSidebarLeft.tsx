@@ -9,6 +9,7 @@ import {
   EyeOff,
   Search,
   Filter,
+  Copy,
   Package,
   Plus,
   Layout as LayoutIcon,
@@ -21,7 +22,7 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import React, { useState } from 'react';
-import { LogicalLocation, VisualNode, ViewMode } from '../../types';
+import { LogicalLocation, VisualNode, ViewType, StructureNode, SplitTreeEntry } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { findNodeById, replaceNodeById } from '../../lib/structureUtils';
 import { PRESET_CATEGORIES } from '../../constants/presets';
@@ -33,12 +34,15 @@ interface SidebarLeftProps {
   selectedIds: string[];
   onSelect: (id: string | null) => void;
   onSelectMultiple: (ids: string[]) => void;
+  onCloneNode?: (id: string) => void;
   onAddPreset: (preset: any) => void;
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
+  viewMode: ViewType;
+  setViewMode: (mode: ViewType) => void;
   selectedFrontCellIds: string[];
   onSelectFrontCell: (ids: string[] | ((prev: string[]) => string[])) => void;
   onUpdateNode?: (id: string, updates: Partial<VisualNode>) => void;
+  splitTrees: SplitTreeEntry[];
+  onUpdateSplitTree: (structure: StructureNode) => void;
 }
 
 type Tab = 'visuals' | 'presets' | 'locations' | 'layers' | 'structure';
@@ -50,19 +54,19 @@ export default function EditorSidebarLeft({
   selectedIds,
   onSelect, 
   onSelectMultiple,
+  onCloneNode,
   onAddPreset,
   viewMode,
   setViewMode,
   selectedFrontCellIds,
   onSelectFrontCell,
-  onUpdateNode
+  onUpdateNode,
+  splitTrees,
+  onUpdateSplitTree
 }: SidebarLeftProps) {
-  const [activeTab, setActiveTab] = useState<Tab>(viewMode === ViewMode.FRONT ? 'structure' : 'visuals');
+  const [activeTab, setActiveTab] = useState<Tab>(viewMode === ViewType.FRONT ? 'structure' : 'visuals');
   const [expandedIds, setExpandedIds] = useState<string[]>(['l1']);
   const [expandedStructureIds, setExpandedStructureIds] = useState<string[]>([]);
-
-  const isFrontMode = viewMode === ViewMode.FRONT;
-  const selectedNode = visuals.find(v => v.id === (selectedId || selectedIds[0]));
 
   const toggleSelection = (id: string, isShift: boolean) => {
     if (isShift) {
@@ -76,18 +80,22 @@ export default function EditorSidebarLeft({
     }
   };
 
+  const isFrontMode = viewMode === ViewType.FRONT;
+  const selectedNode = visuals.find(v => v.id === (selectedId || selectedIds[0]));
+  const splitTree = splitTrees.find(st => st.id === selectedNode?.front?.splitTreeId);
+
   const toggleLock = (id: string) => {
-    if (!selectedNode?.structure || !onUpdateNode) return;
-    const targetNode = findNodeById(selectedNode.structure, id);
+    if (!splitTree || !onUpdateSplitTree) return;
+    const targetNode = findNodeById(splitTree.root, id);
     if (targetNode) {
-      const newStructure = replaceNodeById(selectedNode.structure, id, { ...targetNode, locked: !targetNode.locked });
-      onUpdateNode(selectedNode.id, { structure: newStructure });
+      const newStructure = replaceNodeById(splitTree.root, id, { ...targetNode, locked: !targetNode.locked });
+      onUpdateSplitTree(newStructure);
     }
   };
 
   // Auto-expand parents of selected cell
   React.useEffect(() => {
-    if (selectedFrontCellIds.length > 0 && selectedNode?.structure) {
+    if (selectedFrontCellIds.length > 0 && splitTree?.root) {
       const lastId = selectedFrontCellIds[selectedFrontCellIds.length - 1];
       const getPath = (root: any, id: string, path: string[] = []): string[] | null => {
         if (root.id === id) return path;
@@ -99,24 +107,24 @@ export default function EditorSidebarLeft({
         }
         return null;
       };
-      const path = getPath(selectedNode.structure, lastId);
+      const path = getPath(splitTree.root, lastId);
       if (path) {
         setExpandedStructureIds(prev => Array.from(new Set([...prev, ...path])));
       }
     }
-  }, [selectedFrontCellIds, selectedNode?.structure]);
+  }, [selectedFrontCellIds, splitTree?.root]);
 
   // Sync tab when viewMode changes
   React.useEffect(() => {
-    if (viewMode === ViewMode.FRONT) {
+    if (viewMode === ViewType.FRONT) {
       setActiveTab('structure');
     } else {
       setActiveTab('visuals');
     }
   }, [viewMode]);
 
-  const rootVisual = visuals.find(v => v.parentId === null && v.type === 'zone');
-  const otherVisuals = visuals.filter(v => v !== rootVisual);
+  const rootVisuals = visuals.filter(v => v.parentVisualNodeId === null);
+  const otherVisuals = visuals.filter(v => v.parentVisualNodeId !== null);
 
   return (
     <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-30">
@@ -145,17 +153,17 @@ export default function EditorSidebarLeft({
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 p-2">
         {activeTab === 'structure' && isFrontMode && (
           <div className="space-y-4">
-             {selectedNode?.structure ? (
+             {splitTree?.root ? (
                <div>
                   <div 
-                    onClick={() => setViewMode(ViewMode.TOP_DOWN)}
+                    onClick={() => setViewMode(ViewType.TOP_DOWN)}
                     className="flex items-center justify-between px-2 py-1.5 mb-2 rounded-lg cursor-pointer hover:bg-sky-500/5 transition-all text-sky-400 group border border-transparent hover:border-sky-500/20"
                   >
-                    <p className="text-[10px] font-black uppercase tracking-widest italic">{selectedNode.label}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest italic">{selectedNode?.label}</p>
                     <ChevronRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity rotate-180" />
                   </div>
                   <StructureTreeItem 
-                    node={selectedNode.structure} 
+                    node={splitTree.root} 
                     selectedCellIds={selectedFrontCellIds} 
                     onSelectCell={(id: string, shift: boolean) => {
                       if (shift) {
@@ -187,25 +195,28 @@ export default function EditorSidebarLeft({
 
         {activeTab === 'visuals' && (
           <div className="space-y-4">
-             {rootVisual && (
+             {rootVisuals.length > 0 && (
                <div>
                   <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest px-2 mb-2 italic">Physical Footprint</p>
-                  <div 
-                    onClick={(e) => toggleSelection(rootVisual.id, e.shiftKey)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                      selectedIds.includes(rootVisual.id) ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-slate-800/40 border-slate-700 hover:border-slate-600 text-slate-400'
-                    }`}
-                  >
-                     <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center border border-slate-700 shrink-0">
-                        <Warehouse className="w-5 h-5" />
-                     </div>
-                     <div>
-                        <p className="text-[10px] font-black uppercase tracking-tight text-white">{rootVisual.label}</p>
-                        <p className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
-                          {rootVisual.width/10}cm x {rootVisual.depth/10}cm Total
-                        </p>
-                     </div>
-                  </div>
+                  {rootVisuals.map(rv => (
+                    <div 
+                      key={rv.id}
+                      onClick={(e) => toggleSelection(rv.id, e.shiftKey)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer mb-2 ${
+                        selectedIds.includes(rv.id) ? 'bg-sky-500/10 border-sky-500/30 text-sky-400' : 'bg-slate-800/40 border-slate-700 hover:border-slate-600 text-slate-400'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center border border-slate-700 shrink-0">
+                          <Warehouse className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-[10px] font-black uppercase tracking-tight text-white">{rv.label}</p>
+                          <p className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
+                            {rv.widthMm}mm x {rv.depthMm}mm Total
+                          </p>
+                      </div>
+                    </div>
+                  ))}
                </div>
              )}
 
@@ -217,6 +228,8 @@ export default function EditorSidebarLeft({
                     visual={visual} 
                     selected={selectedIds.includes(visual.id)} 
                     onSelect={(shift: boolean) => toggleSelection(visual.id, shift)} 
+                    onClone={() => onCloneNode?.(visual.id)}
+                    onUpdate={(updates: Partial<VisualNode>) => onUpdateNode?.(visual.id, updates)}
                   />
                 ))}
                 {otherVisuals.length === 0 && (
@@ -246,7 +259,7 @@ export default function EditorSidebarLeft({
                          <div className="flex-1">
                             <p className="text-[10px] font-black uppercase tracking-tight text-slate-200 group-hover:text-white">{item.label}</p>
                             <p className="text-[8px] font-mono text-slate-500 uppercase tracking-widest">
-                              {item.w/10}x{item.d/10}cm Surface
+                              {item.widthMm}x{item.depthMm}mm Surface
                             </p>
                          </div>
                          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -381,27 +394,47 @@ function LocationTreeItem({ location, allLocations, visuals, expandedIds, setExp
   );
 }
 
-function VisualListItem({ visual, selected, onSelect }: any) {
+function VisualListItem({ visual, selected, onSelect, onClone, onUpdate }: any) {
   return (
     <div 
       className={`
-        flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border mb-1
+        flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border mb-1 group
         ${selected ? 'bg-sky-500/10 text-sky-400 border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.05)]' : 'hover:bg-slate-800 text-slate-500 border-transparent hover:text-slate-200'}
+        ${visual.locked ? 'opacity-75' : ''}
       `}
       onClick={(e) => onSelect(e.shiftKey)}
     >
       <div className="flex items-center gap-2">
-         <div className={`w-4 h-4 border rounded flex items-center justify-center p-0.5 ${selected ? 'border-sky-500' : 'border-slate-700'}`}>
-            <div className={`w-full h-full rounded-sm ${selected ? 'bg-sky-500' : 'bg-slate-700'}`}></div>
+         <div className={`w-4 h-4 border rounded flex items-center justify-center p-0.5 ${selected ? (visual.locked ? 'border-amber-500' : 'border-sky-500') : 'border-slate-700'}`}>
+            <div className={`w-full h-full rounded-sm ${selected ? (visual.locked ? 'bg-amber-500' : 'bg-sky-500') : 'bg-slate-700'}`}></div>
          </div>
          <div className="flex flex-col">
-            <span className={`text-[10px] font-black uppercase tracking-tight ${selected ? 'text-white' : ''}`}>{visual.label}</span>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-black uppercase tracking-tight ${selected ? 'text-white' : ''}`}>{visual.label}</span>
+              {visual.locked && <Lock className="w-2.5 h-2.5 text-amber-500/70" />}
+            </div>
             <span className="text-[8px] text-slate-600 font-mono italic">{visual.locationId ? 'Mapped-ID' : 'Virtual'}</span>
          </div>
       </div>
-      <button className={`p-1 transition-colors ${selected ? 'text-sky-400' : 'hover:text-white'}`}>
-        <Eye className="w-3.5 h-3.5" />
-      </button>
+      <div className="flex items-center gap-1">
+        <button 
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            onUpdate?.({ locked: !visual.locked });
+          }}
+          className={`p-1 transition-colors ${visual.locked ? 'text-amber-500' : 'text-slate-600 hover:text-white opacity-0 group-hover:opacity-100'}`}
+          title={visual.locked ? "Unlock Object" : "Lock Object"}
+        >
+          {visual.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+        </button>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onClone?.(); }}
+          className={`p-1 transition-colors ${selected ? 'text-sky-400' : 'hover:text-white opacity-0 group-hover:opacity-100'}`}
+          title="Clone Node"
+        >
+          <Copy className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

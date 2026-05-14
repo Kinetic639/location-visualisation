@@ -43,13 +43,13 @@ interface LocationModalProps {
 }
 
 export default function LocationModal({ onClose, onSubmit, locations, initialData }: LocationModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     code: initialData?.code || '',
     name: initialData?.name || '',
     description: initialData?.description || '',
     parentId: initialData?.parentId || '',
-    locationType: initialData?.locationType || LocationType.BIN,
-    allowsStock: initialData?.allowsStock ?? true,
+    locationCategory: initialData?.locationCategory || LocationType.BIN,
+    canStoreInventory: initialData?.canStoreInventory ?? true,
     isReceivable: initialData?.isReceivable ?? true,
     isPickable: initialData?.isPickable ?? true,
     isVirtual: initialData?.isVirtual ?? false,
@@ -76,8 +76,8 @@ export default function LocationModal({ onClose, onSubmit, locations, initialDat
 
     setFormData(prev => ({
         ...prev,
-        locationType: type,
-        allowsStock: category.defaults.storesInventory ?? true,
+        locationCategory: type,
+        canStoreInventory: category.defaults.canStoreInventory ?? true,
         isReceivable: category.defaults.receivable ?? true,
         isPickable: category.defaults.pickable ?? true,
         isVirtual: category.defaults.virtual ?? false
@@ -200,7 +200,7 @@ export default function LocationModal({ onClose, onSubmit, locations, initialDat
                         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 ml-1">Rich Categories</label>
                         <div className="grid grid-cols-2 gap-3 max-h-[480px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800">
                             {(Object.values(LOCATION_CATEGORIES) as LocationCategoryDefinition[]).map((cat) => {
-                                const active = formData.locationType === cat.id;
+                                const active = formData.locationCategory === cat.id;
                                 return (
                                     <div 
                                         key={cat.id} 
@@ -238,16 +238,16 @@ export default function LocationModal({ onClose, onSubmit, locations, initialDat
                             <Zap className="w-4 h-4 text-sky-400" />
                          </div>
                          <p className="text-[10px] text-sky-400/80 leading-relaxed font-bold uppercase tracking-tight">
-                            Capabilities derived from <span className="text-sky-300">{LOCATION_CATEGORIES[formData.locationType]?.label}</span>. Manual overrides allowed.
+                            Capabilities derived from <span className="text-sky-300">{LOCATION_CATEGORIES[formData.locationCategory as LocationType]?.label}</span>. Manual overrides allowed.
                          </p>
                       </div>
 
                       <div className="grid grid-cols-1 gap-3">
                         <BehaviorToggle 
                             icon={<Database className="w-4 h-4" />} 
-                            label="Allows Stock" 
-                            checked={formData.allowsStock} 
-                            onChange={(v) => setFormData({ ...formData, allowsStock: v })}
+                            label="Stores Inventory" 
+                            checked={formData.canStoreInventory} 
+                            onChange={(v) => setFormData({ ...formData, canStoreInventory: v })}
                         />
                         <BehaviorToggle 
                             icon={<Inbox className="w-4 h-4" />} 
